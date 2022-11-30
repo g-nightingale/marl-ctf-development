@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 from matplotlib import colors
 import time
 
+
 class GridworldCtf:
     """
     A GridWorld capture the flag environment.
@@ -11,10 +12,24 @@ class GridworldCtf:
     """
 
     AGENT_STARTING_POSITIONS = {
-        "t1a1": (0, 2),
-        "t1a2": (2, 0),
-        "t2a1": (7, 9),
-        "t2a2": (9, 7),
+        0: (0, 2),
+        1: (2, 0),
+        2: (7, 9),
+        3: (9, 7),
+    }
+
+    AGENT_ID_MAP = {
+        0: "t1a1",
+        1: "t1a2",
+        2: "t2a1",
+        3: "t2a2"
+    }
+
+    AGENT_BLOCK_MAP = {
+        0: 2,
+        1: 3,
+        2: 4,
+        3: 5
     }
 
     FLAG_POSITIONS = {
@@ -35,6 +50,7 @@ class GridworldCtf:
         self.REWARD_GOAL = 100
         self.REWARD_STEP = -1
         self.REWARD_CAPTURE = -1
+        self.N_ACTIONS = 5
         self.reset()
 
     def reset(self):
@@ -44,10 +60,7 @@ class GridworldCtf:
         self.grid = np.flip(np.loadtxt("./map.txt", dtype=np.int8), axis = 0)
 
         if self.GAME_MODE=='static':
-            self.t1a1_pos = self.AGENT_STARTING_POSITIONS['t1a1']
-            self.t1a2_pos = self.AGENT_STARTING_POSITIONS['t1a2']
-            self.t2a1_pos = self.AGENT_STARTING_POSITIONS['t2a1']
-            self.t2a2_pos = self.AGENT_STARTING_POSITIONS['t2a2']
+            self.agent_positions = self.AGENT_STARTING_POSITIONS.copy()
 
             self.t1_flag_pos = self.FLAG_POSITIONS['t1']
             self.t2_flag_pos = self.FLAG_POSITIONS['t2']
@@ -77,47 +90,57 @@ class GridworldCtf:
         """
 
         # Add agents
-        self.grid[self.t1a1_pos] = 2
-        self.grid[self.t1a2_pos] = 2
+        self.grid[self.AGENT_STARTING_POSITIONS[0]] = 2
+        self.grid[self.AGENT_STARTING_POSITIONS[1]]  = 3
 
-        self.grid[self.t2a1_pos] = 3
-        self.grid[self.t2a2_pos] = 3
+        self.grid[self.AGENT_STARTING_POSITIONS[2]] = 4
+        self.grid[self.AGENT_STARTING_POSITIONS[3]]  = 5
 
         # Add flags
-        self.grid[self.t1_flag_pos] = 4
-        self.grid[self.t2_flag_pos] = 5
+        self.grid[self.t1_flag_pos] = 6
+        self.grid[self.t2_flag_pos] = 7
 
 
-    def move(self, action) -> None:
+    def act(self, agent_idx, action) -> None:
         """
-        Move the agent.
+        Take agent actions.
         """
+
+        # Get the current position of the agent
+        curr_pos = self.agent_positions[agent_idx]
 
         # Move up
         if action == 0:
-            if self.agent_position[0] > 0 and self.grid[self.agent_position[0] - 1, self.agent_position[1]] != self.BLOCK_NUM:
-                self.grid[self.agent_position] = 0
-                self.agent_position = (self.agent_position[0] - 1, self.agent_position[1])
-                self.grid[self.agent_position] = 2
+            if curr_pos[0] > 0 and self.grid[curr_pos[0] - 1, curr_pos[1]] != self.BLOCK_NUM:
+                self.grid[curr_pos] = 0
+                curr_pos = (curr_pos[0] - 1, curr_pos[1])
+                self.grid[curr_pos] = self.AGENT_BLOCK_MAP[agent_idx]
         # Move down
-        if action == 1:
-            if self.agent_position[0] < (self.GRID_LEN-1) and self.grid[self.agent_position[0] + 1, self.agent_position[1]] != self.BLOCK_NUM:
-                self.grid[self.agent_position] = 0
-                self.agent_position = (self.agent_position[0] + 1, self.agent_position[1])
-                self.grid[self.agent_position] = 2
+        elif action == 1:
+            if curr_pos[0] < (self.GRID_LEN-1) and self.grid[curr_pos[0] + 1, curr_pos[1]] != self.BLOCK_NUM:
+                self.grid[curr_pos] = 0
+                curr_pos = (curr_pos[0] + 1, curr_pos[1])
+                self.grid[curr_pos] = self.AGENT_BLOCK_MAP[agent_idx]
         # Move right
-        if action == 2:
-            if self.agent_position[1] < (self.GRID_LEN-1) and self.grid[self.agent_position[0], self.agent_position[1] + 1] != self.BLOCK_NUM:
-                self.grid[self.agent_position] = 0
-                self.agent_position = (self.agent_position[0], self.agent_position[1] + 1)
-                self.grid[self.agent_position] = 2
+        elif action == 2:
+            if curr_pos[1] < (self.GRID_LEN-1) and self.grid[curr_pos[0], curr_pos[1] + 1] != self.BLOCK_NUM:
+                self.grid[curr_pos] = 0
+                curr_pos = (curr_pos[0], curr_pos[1] + 1)
+                self.grid[curr_pos] = self.AGENT_BLOCK_MAP[agent_idx]
         # Move left
-        if action == 3:
-            if self.agent_position[1] > 0 and self.grid[self.agent_position[0], self.agent_position[1] - 1] != self.BLOCK_NUM:
-                self.grid[self.agent_position] = 0
-                self.agent_position = (self.agent_position[0], self.agent_position[1] - 1)
-                self.grid[self.agent_position] = 2
+        elif action == 3:
+            if curr_pos[1] > 0 and self.grid[curr_pos[0], curr_pos[1] - 1] != self.BLOCK_NUM:
+                self.grid[curr_pos] = 0
+                curr_pos = (curr_pos[0], curr_pos[1] - 1)
+                self.grid[curr_pos] = self.AGENT_BLOCK_MAP[agent_idx]
+        # Do nothing
+        elif action == 4:
+            pass
+
+        # Update agent position
+        self.agent_positions[agent_idx] = curr_pos
        
+
     def dice_roll(self):
         """
         Determines order that agents make moves.
@@ -128,29 +151,37 @@ class GridworldCtf:
 
         return arr
 
-    def step(self, actions) -> tuple:
+    def step(self, actions=None) -> tuple:
         """
         Take a step in the environment.
         """
 
-        # Randomly select order of agent actions.
-        for i in self.dice_roll():
-            print(i)
+        # Randomly select order of agent actions
+        for agent_idx in self.dice_roll():
+            agent_id = self.AGENT_ID_MAP[agent_idx]
+            print(f"Agent {agent_id}'s move")
 
-        # Move the agent
-        self.move(action)
+            # Get the agent action
+            action = np.random.randint(5)
 
-        # If agent passes over flag square, set to zero and mark agent as having the flag
-        if self.agent_position == self.flag_pos:
-            self.has_flag = True
-            reward = self.REWARD_CAPTURE
-            self.flag_pos = None # remove flag from board otherwise the agent will spam the flag area
-        # Calculate rewards - game is done when the agent has the flag and reaches the capture position
-        elif self.has_flag and self.agent_position == self.capture_pos:
-            reward = self.REWARD_GOAL
-            self.done = True
-        else:
-            reward = self.REWARD_STEP
+            # Move the agent
+            self.act(agent_idx, action)
+
+            # Temp
+            reward = -1
+            self.done = False
+
+            # If agent passes over flag square, set to zero and mark agent as having the flag
+            # if self.agent_position == self.flag_pos:
+            #     self.has_flag = True
+            #     reward = self.REWARD_CAPTURE
+            #     self.flag_pos = None # remove flag from board otherwise the agent will spam the flag area
+            # # Calculate rewards - game is done when the agent has the flag and reaches the capture position
+            # elif self.has_flag and self.agent_position == self.capture_pos:
+            #     reward = self.REWARD_GOAL
+            #     self.done = True
+            # else:
+            #     reward = self.REWARD_STEP
 
         return self.grid, reward, self.done
 
@@ -183,12 +214,25 @@ class GridworldCtf:
         #env_plot[self.position] = 4
         #env_plot = np.flip(env_plot, axis = 0)
 
+        # define color map 
+        color_map = {0: np.array([224, 224, 224]), # light grey
+                    1: np.array([0, 0, 0]), # black
+                    2: np.array([0, 128, 255]), # blue 
+                    3: np.array([0, 128, 255]), # blue
+                    4: np.array([255, 51, 0]), # red
+                    5: np.array([255, 51, 0]), # red
+                    6: np.array([0, 0, 153]), # dark blue
+                    7: np.array([153, 0, 0]) # dark red
+        }  
+
+        # make a 3d numpy array that has a color channel dimension   
+        data_3d = np.ndarray(shape=(env_plot.shape[0], env_plot.shape[1], 3), dtype=int)
+        for i in range(0, env_plot.shape[0]):
+            for j in range(0, env_plot.shape[1]):
+                data_3d[i][j] = color_map[env_plot[i][j]]
+
         # Plot the gridworld.
-        c = ["lightgrey", "black", "deepskyblue", "tomato", "blue", "red"]
-        cmap = colors.ListedColormap(c)
-        bounds = list(range(len(c)))
-        norm = colors.BoundaryNorm(bounds, cmap.N)
-        ax.imshow(env_plot, cmap=cmap, norm=norm, zorder=0)
+        ax.imshow(data_3d)
 
         # Set up axes.
         ax.grid(which='major', axis='both', linestyle='-', color='0.4', linewidth=2, zorder=1)
@@ -201,7 +245,7 @@ class GridworldCtf:
         #fig.canvas.draw()
         #fig.canvas.flush_events()
 
-        plt.show()
+        #plt.show()
 
         # Sleep if desired.
         if (sleep_time > 0) :
@@ -212,42 +256,44 @@ class GridworldCtf:
         Play the environment manually.
         """
 
-        self.reset()
-        move_counter = 0
-        total_score = 0
+        raise ValueError("Method not implemented")
 
-        ACTIONS_MAP = {
-                        'w':0,
-                        's':1,
-                        'd':2,
-                        'a':3,
-                    }
+        # self.reset()
+        # move_counter = 0
+        # total_score = 0
 
-        raw_action = None
+        # ACTIONS_MAP = {
+        #                 'w':0,
+        #                 's':1,
+        #                 'd':2,
+        #                 'a':3,
+        #             }
 
-        while True:  
-            print(f"Move {move_counter}")
-            self.render()
+        # raw_action = None
 
-            if move_counter > 1:
-                print(f"reward: {reward}, done: {done}")
+        # while True:  
+        #     print(f"Move {move_counter}")
+        #     self.render()
 
-            while raw_action not in ['w', 's', 'a', 'd', 'x']:
-                raw_action = input("Enter an action")
+        #     if move_counter > 1:
+        #         print(f"reward: {reward}, done: {done}")
 
-            if raw_action == 'x':
-                print(f"Game exited")
-                break
+        #     while raw_action not in ['w', 's', 'a', 'd', 'x']:
+        #         raw_action = input("Enter an action")
 
-            action = ACTIONS_MAP[raw_action]
+        #     if raw_action == 'x':
+        #         print(f"Game exited")
+        #         break
 
-            _, reward, done = self.step(int(action))
+        #     action = ACTIONS_MAP[raw_action]
 
-            total_score += reward
-            move_counter += 1
+        #     _, reward, done = self.step(int(action))
 
-            raw_action = None
+        #     total_score += reward
+        #     move_counter += 1
 
-            if done:
-                print(f"You win!, total score {total_score}")
-                break
+        #     raw_action = None
+
+        #     if done:
+        #         print(f"You win!, total score {total_score}")
+        #         break
