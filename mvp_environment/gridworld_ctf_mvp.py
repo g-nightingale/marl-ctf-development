@@ -3,49 +3,13 @@ from IPython.display import clear_output
 import matplotlib.pyplot as plt
 from matplotlib import colors
 import time
-
+import env_config as cfg
 
 class GridworldCtf:
     """
     A GridWorld capture the flag environment.
     
     """
-
-    AGENT_STARTING_POSITIONS = {
-        0: (0, 2),
-        1: (2, 0),
-        2: (7, 9),
-        3: (9, 7),
-    }
-
-    AGENT_TEAMS = {
-        0: 0,
-        1: 0,
-        2: 1,
-        3: 1
-    }
-
-    AGENT_BLOCK_MAP = {
-        0: 2,
-        1: 3,
-        2: 4,
-        3: 5
-    }
-
-    FLAG_POSITIONS = {
-        0: (1, 1),
-        1: (8, 8)
-    }
-
-    FLAG_BLOCK_MAP = {
-        0: 6,
-        1: 7
-    }
-
-    CAPTURE_POSITIONS = {
-        "t1": (1, 1),
-        "t2": (8, 8)
-    }
 
     def __init__(self, agent_list, game_mode='static') -> None:
         self.GAME_MODE = game_mode # static or random
@@ -56,6 +20,13 @@ class GridworldCtf:
         self.REWARD_STEP = -1
         self.REWARD_CAPTURE = -1
         self.N_ACTIONS = 5
+        self.AGENT_STARTING_POSITIONS = cfg.AGENT_STARTING_POSITIONS
+        self.FLAG_POSITIONS = cfg.FLAG_POSITIONS
+        self.FLAG_TILE_MAP = cfg.FLAG_TILE_MAP
+        self.AGENT_TILE_MAP = cfg.AGENT_TILE_MAP
+        self.AGENT_TEAMS = cfg.AGENT_TEAMS
+        self.COLOUR_MAP = cfg.COLOUR_MAP
+
         self.reset()
 
     def reset(self):
@@ -90,15 +61,15 @@ class GridworldCtf:
         """
 
         # Add agents
-        self.grid[self.AGENT_STARTING_POSITIONS[0]] = 2
-        self.grid[self.AGENT_STARTING_POSITIONS[1]]  = 3
+        self.grid[self.AGENT_STARTING_POSITIONS[0]] = self.AGENT_TILE_MAP[0]
+        self.grid[self.AGENT_STARTING_POSITIONS[1]]  = self.AGENT_TILE_MAP[1]
 
-        self.grid[self.AGENT_STARTING_POSITIONS[2]] = 4
-        self.grid[self.AGENT_STARTING_POSITIONS[3]]  = 5
+        self.grid[self.AGENT_STARTING_POSITIONS[2]] = self.AGENT_TILE_MAP[2]
+        self.grid[self.AGENT_STARTING_POSITIONS[3]]  = self.AGENT_TILE_MAP[3]
 
         # Add flags
-        self.grid[self.FLAG_POSITIONS[0]] = self.FLAG_BLOCK_MAP[0]
-        self.grid[self.FLAG_POSITIONS[1]] = self.FLAG_BLOCK_MAP[1]
+        self.grid[self.FLAG_POSITIONS[0]] = self.FLAG_TILE_MAP[0]
+        self.grid[self.FLAG_POSITIONS[1]] = self.FLAG_TILE_MAP[1]
 
 
 
@@ -115,34 +86,34 @@ class GridworldCtf:
         if action == 0:
             if curr_pos[0] > 0 \
               and self.grid[curr_pos[0] - 1, curr_pos[1]] != self.BLOCK_NUM \
-              and self.grid[curr_pos[0] - 1, curr_pos[1]] != self.FLAG_BLOCK_MAP[team]:
+              and self.grid[curr_pos[0] - 1, curr_pos[1]] != self.FLAG_TILE_MAP[team]:
                 self.grid[curr_pos] = 0
                 curr_pos = (curr_pos[0] - 1, curr_pos[1])
-                self.grid[curr_pos] = self.AGENT_BLOCK_MAP[agent_idx]
+                self.grid[curr_pos] = self.AGENT_TILE_MAP[agent_idx]
         # Move down
         elif action == 1:
             if curr_pos[0] < (self.GRID_LEN-1) \
               and self.grid[curr_pos[0] + 1, curr_pos[1]] != self.BLOCK_NUM \
-              and self.grid[curr_pos[0] + 1, curr_pos[1]] != self.FLAG_BLOCK_MAP[team]:
+              and self.grid[curr_pos[0] + 1, curr_pos[1]] != self.FLAG_TILE_MAP[team]:
                 self.grid[curr_pos] = 0
                 curr_pos = (curr_pos[0] + 1, curr_pos[1])
-                self.grid[curr_pos] = self.AGENT_BLOCK_MAP[agent_idx]
+                self.grid[curr_pos] = self.AGENT_TILE_MAP[agent_idx]
         # Move right
         elif action == 2:
             if curr_pos[1] < (self.GRID_LEN-1) \
               and self.grid[curr_pos[0], curr_pos[1] + 1] != self.BLOCK_NUM \
-              and self.grid[curr_pos[0], curr_pos[1] + 1] != self.FLAG_BLOCK_MAP[team]:
+              and self.grid[curr_pos[0], curr_pos[1] + 1] != self.FLAG_TILE_MAP[team]:
                 self.grid[curr_pos] = 0
                 curr_pos = (curr_pos[0], curr_pos[1] + 1)
-                self.grid[curr_pos] = self.AGENT_BLOCK_MAP[agent_idx]
+                self.grid[curr_pos] = self.AGENT_TILE_MAP[agent_idx]
         # Move left
         elif action == 3:
             if curr_pos[1] > 0 \
               and self.grid[curr_pos[0], curr_pos[1] - 1] != self.BLOCK_NUM \
-              and self.grid[curr_pos[0], curr_pos[1] - 1] != self.FLAG_BLOCK_MAP[team]:
+              and self.grid[curr_pos[0], curr_pos[1] - 1] != self.FLAG_TILE_MAP[team]:
                 self.grid[curr_pos] = 0
                 curr_pos = (curr_pos[0], curr_pos[1] - 1)
-                self.grid[curr_pos] = self.AGENT_BLOCK_MAP[agent_idx]
+                self.grid[curr_pos] = self.AGENT_TILE_MAP[agent_idx]
         # Do nothing
         elif action == 4:
             pass
@@ -220,25 +191,12 @@ class GridworldCtf:
 
         # Prepare the environment plot and mark the car's position.
         env_plot = np.copy(self.grid)
-        #env_plot[self.position] = 4
-        #env_plot = np.flip(env_plot, axis = 0)
-
-        # define color map 
-        color_map = {0: np.array([224, 224, 224]), # light grey
-                    1: np.array([0, 0, 0]), # black
-                    2: np.array([0, 128, 255]), # blue 
-                    3: np.array([0, 128, 255]), # blue
-                    4: np.array([255, 51, 0]), # red
-                    5: np.array([255, 51, 0]), # red
-                    6: np.array([0, 0, 153]), # dark blue
-                    7: np.array([153, 0, 0]) # dark red
-        }  
 
         # make a 3d numpy array that has a color channel dimension   
         data_3d = np.ndarray(shape=(env_plot.shape[0], env_plot.shape[1], 3), dtype=int)
         for i in range(0, env_plot.shape[0]):
             for j in range(0, env_plot.shape[1]):
-                data_3d[i][j] = color_map[env_plot[i][j]]
+                data_3d[i][j] = self.COLOUR_MAP[env_plot[i][j]]
 
         # Plot the gridworld.
         ax.imshow(data_3d)
