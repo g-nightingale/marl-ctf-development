@@ -18,11 +18,11 @@ class GridworldCtf:
         3: (9, 7),
     }
 
-    AGENT_ID_MAP = {
-        0: "t1a1",
-        1: "t1a2",
-        2: "t2a1",
-        3: "t2a2"
+    AGENT_TEAMS = {
+        0: 0,
+        1: 0,
+        2: 1,
+        3: 1
     }
 
     AGENT_BLOCK_MAP = {
@@ -33,8 +33,13 @@ class GridworldCtf:
     }
 
     FLAG_POSITIONS = {
-        "t1": (1, 1),
-        "t2": (8, 8)
+        0: (1, 1),
+        1: (8, 8)
+    }
+
+    FLAG_BLOCK_MAP = {
+        0: 6,
+        1: 7
     }
 
     CAPTURE_POSITIONS = {
@@ -62,11 +67,6 @@ class GridworldCtf:
         if self.GAME_MODE=='static':
             self.agent_positions = self.AGENT_STARTING_POSITIONS.copy()
 
-            self.t1_flag_pos = self.FLAG_POSITIONS['t1']
-            self.t2_flag_pos = self.FLAG_POSITIONS['t2']
-
-            self.t1_capture_pos = self.CAPTURE_POSITIONS['t1']
-            self.t2_capture_pos = self.CAPTURE_POSITIONS['t2']
 
         elif self.GAME_MODE =='random':
             # self.agent_position = (np.random.randint(7, 10), np.random.randint(10))
@@ -97,8 +97,9 @@ class GridworldCtf:
         self.grid[self.AGENT_STARTING_POSITIONS[3]]  = 5
 
         # Add flags
-        self.grid[self.t1_flag_pos] = 6
-        self.grid[self.t2_flag_pos] = 7
+        self.grid[self.FLAG_POSITIONS[0]] = self.FLAG_BLOCK_MAP[0]
+        self.grid[self.FLAG_POSITIONS[1]] = self.FLAG_BLOCK_MAP[1]
+
 
 
     def act(self, agent_idx, action) -> None:
@@ -108,28 +109,37 @@ class GridworldCtf:
 
         # Get the current position of the agent
         curr_pos = self.agent_positions[agent_idx]
+        team = self.AGENT_TEAMS[agent_idx]
 
         # Move up
         if action == 0:
-            if curr_pos[0] > 0 and self.grid[curr_pos[0] - 1, curr_pos[1]] != self.BLOCK_NUM:
+            if curr_pos[0] > 0 \
+              and self.grid[curr_pos[0] - 1, curr_pos[1]] != self.BLOCK_NUM \
+              and self.grid[curr_pos[0] - 1, curr_pos[1]] != self.FLAG_BLOCK_MAP[team]:
                 self.grid[curr_pos] = 0
                 curr_pos = (curr_pos[0] - 1, curr_pos[1])
                 self.grid[curr_pos] = self.AGENT_BLOCK_MAP[agent_idx]
         # Move down
         elif action == 1:
-            if curr_pos[0] < (self.GRID_LEN-1) and self.grid[curr_pos[0] + 1, curr_pos[1]] != self.BLOCK_NUM:
+            if curr_pos[0] < (self.GRID_LEN-1) \
+              and self.grid[curr_pos[0] + 1, curr_pos[1]] != self.BLOCK_NUM \
+              and self.grid[curr_pos[0] + 1, curr_pos[1]] != self.FLAG_BLOCK_MAP[team]:
                 self.grid[curr_pos] = 0
                 curr_pos = (curr_pos[0] + 1, curr_pos[1])
                 self.grid[curr_pos] = self.AGENT_BLOCK_MAP[agent_idx]
         # Move right
         elif action == 2:
-            if curr_pos[1] < (self.GRID_LEN-1) and self.grid[curr_pos[0], curr_pos[1] + 1] != self.BLOCK_NUM:
+            if curr_pos[1] < (self.GRID_LEN-1) \
+              and self.grid[curr_pos[0], curr_pos[1] + 1] != self.BLOCK_NUM \
+              and self.grid[curr_pos[0], curr_pos[1] + 1] != self.FLAG_BLOCK_MAP[team]:
                 self.grid[curr_pos] = 0
                 curr_pos = (curr_pos[0], curr_pos[1] + 1)
                 self.grid[curr_pos] = self.AGENT_BLOCK_MAP[agent_idx]
         # Move left
         elif action == 3:
-            if curr_pos[1] > 0 and self.grid[curr_pos[0], curr_pos[1] - 1] != self.BLOCK_NUM:
+            if curr_pos[1] > 0 \
+              and self.grid[curr_pos[0], curr_pos[1] - 1] != self.BLOCK_NUM \
+              and self.grid[curr_pos[0], curr_pos[1] - 1] != self.FLAG_BLOCK_MAP[team]:
                 self.grid[curr_pos] = 0
                 curr_pos = (curr_pos[0], curr_pos[1] - 1)
                 self.grid[curr_pos] = self.AGENT_BLOCK_MAP[agent_idx]
@@ -158,8 +168,7 @@ class GridworldCtf:
 
         # Randomly select order of agent actions
         for agent_idx in self.dice_roll():
-            agent_id = self.AGENT_ID_MAP[agent_idx]
-            print(f"Agent {agent_id}'s move")
+            print(f"Agent {agent_idx}'s move")
 
             # Get the agent action
             action = np.random.randint(5)
