@@ -17,9 +17,7 @@ class DQNAgent:
             mem_size=2000,
             n_actions=5,
             device='cpu',
-            available_actions=np.array([1, 1, 1, 1, 1]),
-            name='dqn',
-            chkpt_dir='models/'):
+            available_actions=np.array([1, 1, 1, 1, 1])):
 
         self.q_network = q_network
         self.target_network = copy.deepcopy(q_network)
@@ -35,8 +33,6 @@ class DQNAgent:
         self.device = device
         # up, down, left, right, nothing
         self.available_actions = available_actions
-
-        self.chkpt_file = os.path.join(chkpt_dir, name)
 
         self.loss_fn = torch.nn.MSELoss()
         self.optimizer = torch.optim.Adam(self.q_network.parameters(), lr=self.lr)
@@ -86,11 +82,11 @@ class DQNAgent:
 
         return loss.item()
 
-    def save_models(self):
-        self.save(self.q_network.state_dict(), self.chkpt_file)
+    def save_model(self):
+        self.q_network.save_model()
     
-    def load_models(self):
-        self.load_state_dict(torch.load(self.chkpt_file))
+    def load_model(self):
+        self.q_network.load_model()
 
 
 

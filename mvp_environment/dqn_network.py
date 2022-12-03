@@ -1,12 +1,16 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import os
 
 # cnn model
 # https://stackoverflow.com/questions/51700729/how-to-construct-a-network-with-two-inputs-in-pytorch
 # Reminder: height and width of next conv layer = W_1 = [(W_0 + 2P - F)/S] + 1
 class DQNNetwork(nn.Module):
-    def __init__(self, use_device=None):
+    def __init__(self, 
+                use_device=None,
+                name='dqn',
+                chkpt_dir='saved_models'):
         super().__init__()
         # channels / filters / filter size
         self.conv1 = nn.Conv2d(1, 3, 3)
@@ -22,6 +26,8 @@ class DQNNetwork(nn.Module):
         if use_device is not None:
             self.to(use_device)
 
+        self.chkpt_file = os.path.join(chkpt_dir, name)
+
     def forward(self, state_grid, state_metadata):
         x1 = F.relu(self.conv1(state_grid))
         x1 = F.relu(self.conv2(x1))
@@ -34,3 +40,9 @@ class DQNNetwork(nn.Module):
         x = F.relu(self.fc1(x))
         x = self.fc2(x)
         return x
+
+    def save_model(self):
+        torch.save(self.q_network.state_dict(), self.chkpt_file)
+    
+    def load_model(self):
+        torch.load_state_dict(torch.load(self.chkpt_file))

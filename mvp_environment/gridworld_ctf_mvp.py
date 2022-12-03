@@ -40,12 +40,12 @@ class GridworldCtf:
         Reset the environment. 
         """
 
-        self.agent_positions = self.AGENT_STARTING_POSITIONS
+        self.agent_positions = self.AGENT_STARTING_POSITIONS.copy()
         
         if self.GAME_MODE=='static':
-            self.grid = self.MAPS[self.DEFAULT_MAP]
+            self.grid = self.MAPS[self.DEFAULT_MAP].copy()
         elif self.GAME_MODE =='random':
-            self.grid = self.MAPS[np.random.randint(4)]
+            self.grid = self.MAPS[np.random.randint(4)].copy()
         else:
             raise ValueError("Game mode must be set to either 'static' or 'random'")
 
@@ -185,7 +185,7 @@ class GridworldCtf:
 
         print(self.grid, '\n')
 
-    def render(self, sleep_time: float=0.1) :
+    def render(self, sleep_time: float=0.2) :
         """
         Renders a pretty matplotlib plot representing the current state of the environment.
         Calling this method on subsequent timesteps will update the plot.
@@ -225,7 +225,7 @@ class GridworldCtf:
         #fig.canvas.draw()
         #fig.canvas.flush_events()
 
-        #plt.show()
+        plt.show()
 
         # Sleep if desired.
         if (sleep_time > 0) :
