@@ -1,6 +1,5 @@
 import numpy as np
 from collections import deque
-from dqn_network import Net
 import copy
 import random
 import torch
@@ -9,7 +8,7 @@ import os
 
 class DQNAgent:
     def __init__(self, 
-            q_network=Net(), 
+            q_network, 
             batch_size=128,
             gamma=0.9,
             lr=0.0005,
@@ -42,12 +41,12 @@ class DQNAgent:
         self.loss_fn = torch.nn.MSELoss()
         self.optimizer = torch.optim.Adam(self.q_network.parameters(), lr=self.lr)
 
-    def choose_action(self, state):
+    def choose_action(self, state_grid, state_metadata):
         """
         Choose an action.
         """
 
-        qval = self.q_network(state)
+        qval = self.q_network(state_grid, state_metadata)
         qval_ = qval.data.cpu().numpy()
         if (random.random() < self.epsilon):
             action = np.random.randint(0, self.n_actions)
@@ -63,14 +62,17 @@ class DQNAgent:
         Update the agent's network.
         """
         minibatch = random.sample(self.memory, self.batch_size)
-        state1_batch = torch.cat([s1 for (s1,a,r,s2,d) in minibatch]).to(self.device)
-        action_batch = torch.Tensor([a for (s1,a,r,s2,d) in minibatch]).to(self.device)
-        reward_batch = torch.Tensor([r for (s1,a,r,s2,d) in minibatch]).to(self.device)
-        state2_batch = torch.cat([s2 for (s1,a,r,s2,d) in minibatch]).to(self.device)
-        done_batch = torch.Tensor([d for (s1,a,r,s2,d) in minibatch]).to(self.device)
-        Q1 = self.q_network(state1_batch) 
+        state1_grid_batch = torch.cat([x[0][0] for x in minibatch]).to(self.device)
+        state1_metadata_batch = torch.cat([x[0][1] for x in minibatch]).to(self.device)
+        action_batch = torch.Tensor([x[1] for x in minibatch]).to(self.device)
+        reward_batch = torch.Tensor([x[2] for x in minibatch]).to(self.device)
+        state2_grid_batch = torch.cat([x[3][0] for x in minibatch]).to(self.device)
+        state2_metadata_batch = torch.cat([x[3][1] for x in minibatch]).to(self.device)
+        done_batch = torch.Tensor([x[4] for x in minibatch]).to(self.device)
+
+        Q1 = self.q_network(state1_grid_batch, state1_metadata_batch) 
         with torch.no_grad():
-            Q2 = self.target_network(state2_batch)
+            Q2 = self.target_network(state2_grid_batch, state2_metadata_batch)
         
         Y = reward_batch + self.gamma * ((1-done_batch) * torch.max(Q2,dim=1)[0])
         X = Q1.gather(dim=1, index=action_batch.long().unsqueeze(dim=1)).squeeze()
