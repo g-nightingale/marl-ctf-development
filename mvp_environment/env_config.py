@@ -1,5 +1,26 @@
 import numpy as np
 
+# Map
+MAP = np.array(
+    [
+        [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 1, 1, 1, 1, 0, 0, 0],
+        [0, 0, 0, 1, 1, 1, 1, 0, 0, 0],
+        [0, 0, 0, 1, 1, 1, 1, 0, 0, 0],
+        [0, 0, 0, 1, 1, 1, 1, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]  
+    ], 
+    dtype=np.int8
+)
+
+# Open and block tiles
+OPEN_TILE = 0
+BLOCK_TILE = 1
+
 # Starting positions for each agent
 AGENT_STARTING_POSITIONS = {
     0: (0, 2),
@@ -42,15 +63,13 @@ CAPTURE_POSITIONS = {
     1: (8, 8)
 }
 
-# Colour map for rendering environment 
+# Colour map for rendering environment. See: https://www.rapidtables.com/web/color/RGB_Color.html
 COLOUR_MAP = {0: np.array([224, 224, 224]), # light grey
             1: np.array([0, 0, 0]), # black
-            2: np.array([0, 128, 255]), # blue 
+            2: np.array([102, 178, 255]), # blue 
             3: np.array([0, 128, 255]), # blue
-            4: np.array([255, 51, 0]), # red
+            4: np.array([255, 102, 102]), # red
             5: np.array([255, 51, 0]), # red
             6: np.array([0, 0, 153]), # dark blue
             7: np.array([153, 0, 0]) # dark red
 }  
-
-# TODO: add map

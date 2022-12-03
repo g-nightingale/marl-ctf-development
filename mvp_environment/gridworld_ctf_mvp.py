@@ -14,17 +14,22 @@ class GridworldCtf:
     def __init__(self, agent_list, game_mode='static') -> None:
         self.GAME_MODE = game_mode # static or random
         self.agent_list = agent_list
-        self.BLOCK_NUM = 1
         self.GRID_LEN = 10
         self.REWARD_GOAL = 100
         self.REWARD_STEP = -1
         self.REWARD_CAPTURE = -1
         self.N_ACTIONS = 5
+        
+        # Load config from file
+        self.MAP = cfg.MAP
+        self.OPEN_TILE = cfg.OPEN_TILE
+        self.BLOCK_TILE = cfg.BLOCK_TILE
         self.AGENT_STARTING_POSITIONS = cfg.AGENT_STARTING_POSITIONS
         self.FLAG_POSITIONS = cfg.FLAG_POSITIONS
         self.FLAG_TILE_MAP = cfg.FLAG_TILE_MAP
         self.AGENT_TILE_MAP = cfg.AGENT_TILE_MAP
         self.AGENT_TEAMS = cfg.AGENT_TEAMS
+        self.CAPTURE_POSITIONS = cfg.CAPTURE_POSITIONS
         self.COLOUR_MAP = cfg.COLOUR_MAP
 
         self.reset()
@@ -33,11 +38,10 @@ class GridworldCtf:
         """ 
         Reset the environment. 
         """
-        self.grid = np.flip(np.loadtxt("./map.txt", dtype=np.int8), axis = 0)
+        self.grid = self.MAP.copy()
 
         if self.GAME_MODE=='static':
             self.agent_positions = self.AGENT_STARTING_POSITIONS.copy()
-
 
         elif self.GAME_MODE =='random':
             # self.agent_position = (np.random.randint(7, 10), np.random.randint(10))
@@ -52,7 +56,7 @@ class GridworldCtf:
             raise ValueError("Game mode must be set to either 'static' or 'random'")
 
         self.init_objects()
-        self.has_flag = False
+        self.has_flag = np.zeros(4, dtype=np.int8)
         self.done = False
 
     def init_objects(self) -> np.array:
@@ -72,7 +76,6 @@ class GridworldCtf:
         self.grid[self.FLAG_POSITIONS[1]] = self.FLAG_TILE_MAP[1]
 
 
-
     def act(self, agent_idx, action) -> None:
         """
         Take agent actions.
@@ -80,37 +83,32 @@ class GridworldCtf:
 
         # Get the current position of the agent
         curr_pos = self.agent_positions[agent_idx]
-        team = self.AGENT_TEAMS[agent_idx]
 
         # Move up
         if action == 0:
             if curr_pos[0] > 0 \
-              and self.grid[curr_pos[0] - 1, curr_pos[1]] != self.BLOCK_NUM \
-              and self.grid[curr_pos[0] - 1, curr_pos[1]] != self.FLAG_TILE_MAP[team]:
+              and self.grid[curr_pos[0] - 1, curr_pos[1]] == self.OPEN_TILE:
                 self.grid[curr_pos] = 0
                 curr_pos = (curr_pos[0] - 1, curr_pos[1])
                 self.grid[curr_pos] = self.AGENT_TILE_MAP[agent_idx]
         # Move down
         elif action == 1:
             if curr_pos[0] < (self.GRID_LEN-1) \
-              and self.grid[curr_pos[0] + 1, curr_pos[1]] != self.BLOCK_NUM \
-              and self.grid[curr_pos[0] + 1, curr_pos[1]] != self.FLAG_TILE_MAP[team]:
+              and self.grid[curr_pos[0] + 1, curr_pos[1]] == self.OPEN_TILE:
                 self.grid[curr_pos] = 0
                 curr_pos = (curr_pos[0] + 1, curr_pos[1])
                 self.grid[curr_pos] = self.AGENT_TILE_MAP[agent_idx]
         # Move right
         elif action == 2:
             if curr_pos[1] < (self.GRID_LEN-1) \
-              and self.grid[curr_pos[0], curr_pos[1] + 1] != self.BLOCK_NUM \
-              and self.grid[curr_pos[0], curr_pos[1] + 1] != self.FLAG_TILE_MAP[team]:
+              and self.grid[curr_pos[0], curr_pos[1] + 1] == self.OPEN_TILE:
                 self.grid[curr_pos] = 0
                 curr_pos = (curr_pos[0], curr_pos[1] + 1)
                 self.grid[curr_pos] = self.AGENT_TILE_MAP[agent_idx]
         # Move left
         elif action == 3:
             if curr_pos[1] > 0 \
-              and self.grid[curr_pos[0], curr_pos[1] - 1] != self.BLOCK_NUM \
-              and self.grid[curr_pos[0], curr_pos[1] - 1] != self.FLAG_TILE_MAP[team]:
+              and self.grid[curr_pos[0], curr_pos[1] - 1] == self.OPEN_TILE:
                 self.grid[curr_pos] = 0
                 curr_pos = (curr_pos[0], curr_pos[1] - 1)
                 self.grid[curr_pos] = self.AGENT_TILE_MAP[agent_idx]
@@ -132,36 +130,50 @@ class GridworldCtf:
 
         return arr
 
-    def step(self, actions=None) -> tuple:
+    def check_object_distance(self, agent_idx, object_tile):
+        """
+        Check if agent is within one cell of a given object.
+        """
+        
+        x, y = self.agent_positions[agent_idx]
+        capture = self.grid[max(x-1, 0):x+2, max(y-1, 0):y+2] == object_tile
+
+        return capture.any()
+
+    def check_object_distance2(self, agent_idx, object_xy):
+        """
+        Check if agent is within one cell of a given object.
+        """
+        
+        x, y = self.agent_positions[agent_idx]
+        capture = np.abs(np.array([x, y]) - np.array([object_xy[0], object_xy[1]]))
+        print(x, y, object_xy, capture)
+        return max(capture) <= 1
+
+
+    def step(self, agent_idx) -> tuple:
         """
         Take a step in the environment.
         """
+        
+        agent_team = self.AGENT_TEAMS[agent_idx]
 
-        # Randomly select order of agent actions
-        for agent_idx in self.dice_roll():
-            print(f"Agent {agent_idx}'s move")
+        # Get the agent action
+        action = np.random.randint(5)
 
-            # Get the agent action
-            action = np.random.randint(5)
+        # Move the agent
+        self.act(agent_idx, action)
 
-            # Move the agent
-            self.act(agent_idx, action)
-
-            # Temp
-            reward = -1
-            self.done = False
-
-            # If agent passes over flag square, set to zero and mark agent as having the flag
-            # if self.agent_position == self.flag_pos:
-            #     self.has_flag = True
-            #     reward = self.REWARD_CAPTURE
-            #     self.flag_pos = None # remove flag from board otherwise the agent will spam the flag area
-            # # Calculate rewards - game is done when the agent has the flag and reaches the capture position
-            # elif self.has_flag and self.agent_position == self.capture_pos:
-            #     reward = self.REWARD_GOAL
-            #     self.done = True
-            # else:
-            #     reward = self.REWARD_STEP
+        # If agent passes over flag square, set to zero and mark agent as having the flag
+        if self.check_object_distance(agent_idx, self.FLAG_TILE_MAP[1-agent_team]):
+            self.has_flag[agent_idx] = 1
+            self.grid[self.FLAG_POSITIONS[1-agent_team]] = 0
+        # Calculate rewards - game is done when the agent has the flag and reaches the capture position
+        elif self.has_flag[agent_idx] == 1 and self.check_object_distance2(agent_idx, self.CAPTURE_POSITIONS[agent_team]):
+            reward = self.REWARD_GOAL
+            self.done = True
+        else:
+            reward = self.REWARD_STEP
 
         return self.grid, reward, self.done
 
@@ -223,7 +235,7 @@ class GridworldCtf:
         Play the environment manually.
         """
 
-        raise ValueError("Method not implemented")
+        return None
 
         # self.reset()
         # move_counter = 0
