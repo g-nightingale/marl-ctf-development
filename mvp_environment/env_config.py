@@ -54,7 +54,7 @@ MAPS = np.array(
     ], 
     dtype=np.int8
 )
-DEFAULT_MAP = 1
+DEFAULT_MAP = 0
 GRID_LEN = 10
 
 # Rewards

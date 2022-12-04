@@ -8,9 +8,9 @@ import os
 # Reminder: height and width of next conv layer = W_1 = [(W_0 + 2P - F)/S] + 1
 class DQNNetwork(nn.Module):
     def __init__(self, 
-                use_device=None,
                 name='dqn',
-                chkpt_dir='saved_models'):
+                chkpt_dir='saved_models',
+                device='cpu'):
         super().__init__()
         # channels / filters / filter size
         self.conv1 = nn.Conv2d(1, 3, 3)
@@ -23,8 +23,8 @@ class DQNNetwork(nn.Module):
         self.fc1 = nn.Linear(8*6*6+8, 128)
         self.fc2 = nn.Linear(128, 5)
         #self.device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
-        if use_device is not None:
-            self.to(use_device)
+        if device is not None:
+            self.to(device)
 
         self.chkpt_file = os.path.join(chkpt_dir, name)
 
