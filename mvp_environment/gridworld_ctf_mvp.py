@@ -52,6 +52,7 @@ class GridworldCtf:
         self.init_objects()
         self.has_flag = np.zeros(self.N_AGENTS, dtype=np.int8)
         self.done = False
+        self.winning_agent = None
 
     def init_objects(self) -> np.array:
         """"
@@ -170,6 +171,7 @@ class GridworldCtf:
             elif self.has_flag[agent_idx] == 1 and self.check_object_distance2(agent_idx, self.CAPTURE_POSITIONS[agent_team]):
                 reward = self.REWARD_CAPTURE
                 self.done = True
+                self.winning_agent = agent_idx
             else:
                 reward = self.REWARD_STEP
 

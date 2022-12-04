@@ -44,8 +44,8 @@ class DQNAgent:
         Softmax policy - taken from Deep Reinforcement Learning in Action.
         """
         soft = torch.exp(qvals/temp) / torch.sum(torch.exp(qvals/temp)) #D
-        action = torch.multinomial(soft,1) 
-        return action.cpu().numpy()
+        action = torch.multinomial(soft, 1) 
+        return action.cpu().numpy().item()
 
     def choose_action(self, state_grid, state_metadata):
         """
@@ -53,14 +53,14 @@ class DQNAgent:
         """
 
         qval = self.q_network(state_grid, state_metadata)
-        qval_ = qval.data.cpu().numpy()
-
+        
         if self.use_softmax:
-            action = self.softmax_policy(self, qval_, temp=0.9)
+            action = self.softmax_policy(qval, temp=0.9)
         else:
             if (random.random() < self.epsilon):
                 action = np.random.randint(0, self.n_actions)
             else:
+                qval_ = qval.data.cpu().numpy()
                 action = np.argmax(qval_)
 
         # apply mask based on agents abilities
