@@ -42,7 +42,7 @@ class DQNNetwork(nn.Module):
         return x
 
     def save_model(self):
-        torch.save(self..state_dict(), self.chkpt_file)
+        torch.save(self.state_dict(), self.chkpt_file)
     
     def load_model(self):
         torch.load_state_dict(torch.load(self.chkpt_file))
