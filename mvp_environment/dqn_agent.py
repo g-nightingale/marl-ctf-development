@@ -15,6 +15,7 @@ class DQNAgent:
             epsilon=0.3,
             target_update_steps=500,
             mem_size=2000,
+            use_softmax=False,
             n_actions=5,
             device='cpu',
             available_actions=np.array([1, 1, 1, 1, 1])):
@@ -29,6 +30,7 @@ class DQNAgent:
         self.epsilon = epsilon
         self.target_update_steps = target_update_steps
         self.memory = deque(maxlen=mem_size)
+        self.use_softmax = use_softmax
         self.n_actions = n_actions
         self.device = device
         # up, down, left, right, nothing
@@ -37,6 +39,14 @@ class DQNAgent:
         self.loss_fn = torch.nn.MSELoss()
         self.optimizer = torch.optim.Adam(self.q_network.parameters(), lr=self.lr)
 
+    def softmax_policy(self, qvals, temp=0.9):
+        """
+        Softmax policy - taken from Deep Reinforcement Learning in Action.
+        """
+        soft = torch.exp(qvals/temp) / torch.sum(torch.exp(qvals/temp)) #D
+        action = torch.multinomial(soft,1) 
+        return action.cpu().numpy()
+
     def choose_action(self, state_grid, state_metadata):
         """
         Choose an action.
@@ -44,10 +54,14 @@ class DQNAgent:
 
         qval = self.q_network(state_grid, state_metadata)
         qval_ = qval.data.cpu().numpy()
-        if (random.random() < self.epsilon):
-            action = np.random.randint(0, self.n_actions)
+
+        if self.use_softmax:
+            action = self.softmax_policy(self, qval_, temp=0.9)
         else:
-            action = np.argmax(qval_)
+            if (random.random() < self.epsilon):
+                action = np.random.randint(0, self.n_actions)
+            else:
+                action = np.argmax(qval_)
 
         # apply mask based on agents abilities
         #action *= self.available_actions
