@@ -21,7 +21,7 @@ class DQNNetwork(nn.Module):
         self.fc_other_info2 = nn.Linear(16, 8)
 
         self.fc1 = nn.Linear(8*6*6+8, 128)
-        self.fc2 = nn.Linear(128, 5)
+        self.fc2 = nn.Linear(128, 4)
         #self.device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
         if device is not None:
             self.to(device)

@@ -63,7 +63,7 @@ REWARD_STEP = -1
 
 # Agents and actions
 N_AGENTS = 4
-N_ACTIONS = 5
+N_ACTIONS = 4
 
 # Open and block tiles
 OPEN_TILE = 0
