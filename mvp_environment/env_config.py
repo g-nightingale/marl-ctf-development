@@ -60,6 +60,7 @@ GRID_LEN = 10
 # Rewards
 REWARD_CAPTURE = 100
 REWARD_STEP = -1
+WINNING_POINTS = 3
 
 # Agents and actions
 N_AGENTS = 4
@@ -68,6 +69,7 @@ N_ACTIONS = 4
 # Open and block tiles
 OPEN_TILE = 0
 BLOCK_TILE = 1
+PLACEHOLDER_TILE = 8
 
 # Starting positions for each agent
 AGENT_STARTING_POSITIONS = {
@@ -119,5 +121,6 @@ COLOUR_MAP = {0: np.array([224, 224, 224]), # light grey
             4: np.array([255, 102, 102]), # red
             5: np.array([255, 51, 0]), # red
             6: np.array([0, 0, 153]), # dark blue
-            7: np.array([153, 0, 0]) # dark red
+            7: np.array([153, 0, 0]), # dark red
+            8: np.array([160, 160, 160]) # grey
 }  

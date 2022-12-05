@@ -20,10 +20,12 @@ class GridworldCtf:
         self.GRID_LEN = cfg.GRID_LEN
         self.REWARD_STEP = cfg.REWARD_STEP
         self.REWARD_CAPTURE = cfg.REWARD_CAPTURE
+        self.WINNING_POINTS = cfg.WINNING_POINTS
         self.N_AGENTS = cfg.N_AGENTS
         self.N_ACTIONS = cfg.N_ACTIONS
         self.OPEN_TILE = cfg.OPEN_TILE
         self.BLOCK_TILE = cfg.BLOCK_TILE
+        self.PLACEHOLDER_TILE = cfg.PLACEHOLDER_TILE
         self.AGENT_STARTING_POSITIONS = cfg.AGENT_STARTING_POSITIONS
         self.FLAG_POSITIONS = cfg.FLAG_POSITIONS
         self.FLAG_TILE_MAP = cfg.FLAG_TILE_MAP
@@ -52,7 +54,7 @@ class GridworldCtf:
         self.init_objects()
         self.has_flag = np.zeros(self.N_AGENTS, dtype=np.int8)
         self.done = False
-        self.winning_agent = None
+        self.team_points = {0:0, 1:0}
 
     def init_objects(self) -> np.array:
         """"
@@ -165,13 +167,17 @@ class GridworldCtf:
             # If agent passes over flag square, set to zero and mark agent as having the flag
             if self.check_object_distance(agent_idx, self.FLAG_TILE_MAP[1-agent_team]):
                 self.has_flag[agent_idx] = 1
-                self.grid[self.FLAG_POSITIONS[1-agent_team]] = 0
+                #self.grid[self.FLAG_POSITIONS[1-agent_team]] = self.PLACEHOLDER_TILE
+                self.grid[self.FLAG_POSITIONS[1-agent_team]] = 0.0
                 reward = self.REWARD_STEP
             # Calculate rewards - game is done when the agent has the flag and reaches the capture position
             elif self.has_flag[agent_idx] == 1 and self.check_object_distance2(agent_idx, self.CAPTURE_POSITIONS[agent_team]):
                 reward = self.REWARD_CAPTURE
+                self.has_flag[agent_idx] = 0
+                #self.grid[self.FLAG_POSITIONS[1-agent_team]] = self.FLAG_TILE_MAP[1-agent_team]
+                self.team_points[agent_team] += 1
+                #if self.team_points[agent_team] == self.WINNING_POINTS:
                 self.done = True
-                self.winning_agent = agent_idx
             else:
                 reward = self.REWARD_STEP
 
