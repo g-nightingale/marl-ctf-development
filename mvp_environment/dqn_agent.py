@@ -43,7 +43,7 @@ class DQNAgent:
         """
         Softmax policy - taken from Deep Reinforcement Learning in Action.
         """
-        soft = torch.exp(qvals/temp) / torch.sum(torch.exp(qvals/temp)) #D
+        soft = torch.exp(qvals/temp) / torch.sum(torch.exp(qvals/temp))
         action = torch.multinomial(soft, 1) 
         return action.cpu().numpy().item()
 

@@ -5,7 +5,7 @@ import os
 
 # cnn model
 # https://stackoverflow.com/questions/51700729/how-to-construct-a-network-with-two-inputs-in-pytorch
-# Reminder: height and width of next conv layer = W_1 = [(W_0 + 2P - F)/S] + 1
+
 class DQNNetwork(nn.Module):
     def __init__(self, 
                 name='dqn',
@@ -13,8 +13,8 @@ class DQNNetwork(nn.Module):
                 device='cpu'):
         super().__init__()
         # channels / filters / filter size
+        # Reminder: height and width of next conv layer = W_1 = [(W_0 + 2P - F)/S] + 1
         self.conv1 = nn.Conv2d(1, 3, 3)
-        #self.pool = nn.MaxPool2d(2, 2)
         self.conv2 = nn.Conv2d(3, 8, 3)
 
         self.fc_other_info1 = nn.Linear(8, 16)
@@ -22,7 +22,7 @@ class DQNNetwork(nn.Module):
 
         self.fc1 = nn.Linear(8*6*6+8, 128)
         self.fc2 = nn.Linear(128, 4)
-        #self.device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
+        
         if device is not None:
             self.to(device)
 
@@ -45,4 +45,4 @@ class DQNNetwork(nn.Module):
         torch.save(self.state_dict(), self.chkpt_file)
     
     def load_model(self):
-        torch.load_state_dict(torch.load(self.chkpt_file))
+        self.load_state_dict(torch.load(self.chkpt_file))
