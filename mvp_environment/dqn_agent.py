@@ -20,6 +20,7 @@ class DQNAgent:
             n_actions=5,
             device='cpu',
             loss='mse',
+            ddqn=False,
             available_actions=np.array([1, 1, 1, 1, 1])):
 
         self.q_network = q_network
@@ -46,6 +47,7 @@ class DQNAgent:
         else:
             raise ValueError("Loss function not recognised")
 
+        self.ddqn = ddqn
         self.optimizer = torch.optim.Adam(self.q_network.parameters(), lr=self.lr)
 
     def softmax_policy(self, qvals):
@@ -92,8 +94,14 @@ class DQNAgent:
         Q1 = self.q_network(state1_grid_batch, state1_metadata_batch) 
         with torch.no_grad():
             Q2 = self.target_network(state2_grid_batch, state2_metadata_batch)
-        
-        Y = reward_batch + self.gamma * ((1-done_batch) * torch.max(Q2,dim=1)[0])
+
+        if self.ddqn:
+            # Use online network to select best action index
+            q1_argmax = torch.argmax(Q1, dim=1)
+            Y = reward_batch + self.gamma * ((1-done_batch) *  Q2[np.arange(10), q1_argmax])
+        else:
+            Y = reward_batch + self.gamma * ((1-done_batch) * torch.max(Q2,dim=1)[0])
+
         X = Q1.gather(dim=1, index=action_batch.long().unsqueeze(dim=1)).squeeze()
         loss = self.loss_fn(X, Y.detach())
         self.optimizer.zero_grad()
