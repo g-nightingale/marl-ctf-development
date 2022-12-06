@@ -36,7 +36,7 @@ class DQNAgent:
         # up, down, left, right, nothing
         self.available_actions = available_actions
 
-        self.loss_fn = torch.nn.MSELoss()
+        self.loss_fn = torch.nn.HuberLoss()
         self.optimizer = torch.optim.Adam(self.q_network.parameters(), lr=self.lr)
 
     def softmax_policy(self, qvals, temp=0.9):
