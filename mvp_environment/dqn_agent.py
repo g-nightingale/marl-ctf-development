@@ -39,11 +39,11 @@ class DQNAgent:
 
         if loss == 'mse':
             self.loss_fn = torch.nn.MSELoss()
-        elif loss == 'hubser':
+        elif loss == 'huber':
             self.loss_fn = torch.nn.HuberLoss()
         else:
             raise ValueError("Loss function not recognised")
-            
+
         self.optimizer = torch.optim.Adam(self.q_network.parameters(), lr=self.lr)
 
     def softmax_policy(self, qvals, temp=0.9):
