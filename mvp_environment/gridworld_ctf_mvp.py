@@ -156,6 +156,8 @@ class GridworldCtf:
 
         rewards = [0, 0, 0, 0]
         for agent_idx in self.dice_roll():
+
+            # Get the agent team
             agent_team = self.AGENT_TEAMS[agent_idx]
 
             # Get the agent action
@@ -167,17 +169,17 @@ class GridworldCtf:
             # If agent passes over flag square, set to zero and mark agent as having the flag
             if self.check_object_distance(agent_idx, self.FLAG_TILE_MAP[1-agent_team]):
                 self.has_flag[agent_idx] = 1
-                #self.grid[self.FLAG_POSITIONS[1-agent_team]] = self.PLACEHOLDER_TILE
-                self.grid[self.FLAG_POSITIONS[1-agent_team]] = 0.0
+                self.grid[self.FLAG_POSITIONS[1-agent_team]] = self.PLACEHOLDER_TILE
+                #self.grid[self.FLAG_POSITIONS[1-agent_team]] = 0.0
                 reward = self.REWARD_STEP
             # Calculate rewards - game is done when the agent has the flag and reaches the capture position
             elif self.has_flag[agent_idx] == 1 and self.check_object_distance2(agent_idx, self.CAPTURE_POSITIONS[agent_team]):
                 reward = self.REWARD_CAPTURE
                 self.has_flag[agent_idx] = 0
-                #self.grid[self.FLAG_POSITIONS[1-agent_team]] = self.FLAG_TILE_MAP[1-agent_team]
+                self.grid[self.FLAG_POSITIONS[1-agent_team]] = self.FLAG_TILE_MAP[1-agent_team]
                 self.team_points[agent_team] += 1
-                #if self.team_points[agent_team] == self.WINNING_POINTS:
-                self.done = True
+                if self.team_points[agent_team] == self.WINNING_POINTS:
+                    self.done = True
             else:
                 reward = self.REWARD_STEP
 
@@ -244,44 +246,45 @@ class GridworldCtf:
         Play the environment manually.
         """
 
-        return None
+        self.reset()
+        move_counter = 0
+        total_score = 0
 
-        # self.reset()
-        # move_counter = 0
-        # total_score = 0
+        ACTIONS_MAP = {
+                        'w':0,
+                        's':1,
+                        'd':2,
+                        'a':3,
+                    }
 
-        # ACTIONS_MAP = {
-        #                 'w':0,
-        #                 's':1,
-        #                 'd':2,
-        #                 'a':3,
-        #             }
+        raw_action = None
 
-        # raw_action = None
+        self.render()
+        while True:  
+            print(f"Move {move_counter}")
+            
 
-        # while True:  
-        #     print(f"Move {move_counter}")
-        #     self.render()
+            if move_counter > 1:
+                print(f"reward: {rewards[0]}, done: {done}")
 
-        #     if move_counter > 1:
-        #         print(f"reward: {reward}, done: {done}")
+            while raw_action not in ['w', 's', 'a', 'd', 'x']:
+                raw_action = input("Enter an action")
 
-        #     while raw_action not in ['w', 's', 'a', 'd', 'x']:
-        #         raw_action = input("Enter an action")
+            if raw_action == 'x':
+                print(f"Game exited")
+                break
 
-        #     if raw_action == 'x':
-        #         print(f"Game exited")
-        #         break
+            actions = np.random.randint(4, size=4)
+            actions[0] = int(ACTIONS_MAP[raw_action])
 
-        #     action = ACTIONS_MAP[raw_action]
+            _, rewards, done = self.step(actions)
 
-        #     _, reward, done = self.step(int(action))
+            total_score += rewards[0]
+            move_counter += 1
 
-        #     total_score += reward
-        #     move_counter += 1
+            raw_action = None
+            self.render()
 
-        #     raw_action = None
-
-        #     if done:
-        #         print(f"You win!, total score {total_score}")
-        #         break
+            if done:
+                print(f"You win!, total score {total_score}")
+                break
