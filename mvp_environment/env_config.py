@@ -69,7 +69,7 @@ N_ACTIONS = 4
 # Open and block tiles
 OPEN_TILE = 0
 BLOCK_TILE = 1
-PLACEHOLDER_TILE = 8
+PLACEHOLDER_TILE = 1
 
 # Starting positions for each agent
 AGENT_STARTING_POSITIONS = {

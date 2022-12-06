@@ -4,6 +4,8 @@ import matplotlib.pyplot as plt
 from matplotlib import colors
 import time
 import env_config as cfg
+import utils as ut
+import torch
 
 class GridworldCtf:
     """
@@ -197,13 +199,9 @@ class GridworldCtf:
 
     def render(self, sleep_time: float=0.2) :
         """
-        Renders a pretty matplotlib plot representing the current state of the environment.
-        Calling this method on subsequent timesteps will update the plot.
-        This is VERY VERY SLOW and wil slow down training a lot. Only use for debugging/testing.
+        Renders the current game grid using matplotlib.
 
-        Arguments:
-            sleep_time {float} -- How many seconds (or partial seconds) you want to wait on this rendered frame.
-
+        Adapted from Bath RL online MSc unit code.
         """
         # Turn interactive mode on.
         plt.ion()
@@ -212,7 +210,7 @@ class GridworldCtf:
         ax.clear()
         clear_output(wait = True)
 
-        # Prepare the environment plot and mark the car's position.
+        # Prepare the environment plot
         env_plot = np.copy(self.grid)
 
         # make a 3d numpy array that has a color channel dimension   
@@ -231,17 +229,13 @@ class GridworldCtf:
         ax.set_yticks(np.arange(-0.5, self.grid.shape[0], 1))
         ax.set_yticklabels([])
 
-        # Draw everything.
-        #fig.canvas.draw()
-        #fig.canvas.flush_events()
-
         plt.show()
 
         # Sleep if desired.
         if (sleep_time > 0) :
             time.sleep(sleep_time)
 
-    def play(self):
+    def play(self, agents=None, env_dims=(1, 1, 10, 10), device='cpu'):
         """
         Play the environment manually.
         """
@@ -259,11 +253,17 @@ class GridworldCtf:
 
         raw_action = None
 
+        # Get agents if provided
+        if agents is not None:
+            agent_t1 = agents[0]
+            agent_t2 = agents[1]
+
         self.render()
+
+        # start main loop
         while True:  
             print(f"Move {move_counter}")
             
-
             if move_counter > 1:
                 print(f"reward: {rewards[0]}, done: {done}")
 
@@ -274,9 +274,26 @@ class GridworldCtf:
                 print(f"Game exited")
                 break
 
+            # initialise random actions
             actions = np.random.randint(4, size=4)
+
+            # if agents are supplied,
+            if agents is not None:
+                grid_state_ = self.grid.reshape(*env_dims) + ut.add_noise(env_dims)
+                grid_state = torch.from_numpy(grid_state_).float().to(device)
+
+                actions = []
+                for agent_idx in np.arange(1, 4):
+                    metadata_state = ut.get_env_metadata(agent_idx, self.has_flag)
+                    if self.AGENT_TEAMS[agent_idx]==0:
+                        actions[agent_idx] = agent_t1.choose_action(grid_state, metadata_state)
+                    else:
+                        actions[agent_idx] = agent_t2.choose_action(grid_state, metadata_state)
+                
+            # insert player action
             actions[0] = int(ACTIONS_MAP[raw_action])
 
+            # step the environment
             _, rewards, done = self.step(actions)
 
             total_score += rewards[0]
