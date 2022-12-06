@@ -18,6 +18,7 @@ class DQNAgent:
             use_softmax=False,
             n_actions=5,
             device='cpu',
+            loss='mse',
             available_actions=np.array([1, 1, 1, 1, 1])):
 
         self.q_network = q_network
@@ -36,7 +37,13 @@ class DQNAgent:
         # up, down, left, right, nothing
         self.available_actions = available_actions
 
-        self.loss_fn = torch.nn.HuberLoss()
+        if loss == 'mse':
+            self.loss_fn = torch.nn.MSELoss()
+        elif loss == 'hubser':
+            self.loss_fn = torch.nn.HuberLoss()
+        else:
+            raise ValueError("Loss function not recognised")
+            
         self.optimizer = torch.optim.Adam(self.q_network.parameters(), lr=self.lr)
 
     def softmax_policy(self, qvals, temp=0.9):

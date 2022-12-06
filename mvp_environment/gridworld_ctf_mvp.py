@@ -172,7 +172,7 @@ class GridworldCtf:
             if self.check_object_distance(agent_idx, self.FLAG_TILE_MAP[1-agent_team]):
                 self.has_flag[agent_idx] = 1
                 self.grid[self.FLAG_POSITIONS[1-agent_team]] = self.PLACEHOLDER_TILE
-                #self.grid[self.FLAG_POSITIONS[1-agent_team]] = 0.0
+                #self.grid[self.FLAG_POSITIONS[1-agent_team]] = 0
                 reward = self.REWARD_STEP
             # Calculate rewards - game is done when the agent has the flag and reaches the capture position
             elif self.has_flag[agent_idx] == 1 and self.check_object_distance2(agent_idx, self.CAPTURE_POSITIONS[agent_team]):
@@ -235,7 +235,7 @@ class GridworldCtf:
         if (sleep_time > 0) :
             time.sleep(sleep_time)
 
-    def play(self, agents=None, env_dims=(1, 1, 10, 10), device='cpu'):
+    def play(self, player=0, agents=None, env_dims=(1, 1, 10, 10), device='cpu'):
         """
         Play the environment manually.
         """
@@ -282,8 +282,7 @@ class GridworldCtf:
                 grid_state_ = self.grid.reshape(*env_dims) + ut.add_noise(env_dims)
                 grid_state = torch.from_numpy(grid_state_).float().to(device)
 
-                actions = []
-                for agent_idx in np.arange(1, 4):
+                for agent_idx in np.arange(4):
                     metadata_state = ut.get_env_metadata(agent_idx, self.has_flag)
                     if self.AGENT_TEAMS[agent_idx]==0:
                         actions[agent_idx] = agent_t1.choose_action(grid_state, metadata_state)
@@ -291,7 +290,7 @@ class GridworldCtf:
                         actions[agent_idx] = agent_t2.choose_action(grid_state, metadata_state)
                 
             # insert player action
-            actions[0] = int(ACTIONS_MAP[raw_action])
+            actions[player] = int(ACTIONS_MAP[raw_action])
 
             # step the environment
             _, rewards, done = self.step(actions)
