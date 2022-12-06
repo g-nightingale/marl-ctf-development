@@ -13,6 +13,7 @@ class DQNAgent:
             gamma=0.9,
             lr=0.0005,
             epsilon=0.3,
+            temp=0.9,
             target_update_steps=500,
             mem_size=2000,
             use_softmax=False,
@@ -29,6 +30,7 @@ class DQNAgent:
         self.gamma = gamma
         self.lr = lr
         self.epsilon = epsilon
+        self.temp = temp
         self.target_update_steps = target_update_steps
         self.memory = deque(maxlen=mem_size)
         self.use_softmax = use_softmax
@@ -46,11 +48,11 @@ class DQNAgent:
 
         self.optimizer = torch.optim.Adam(self.q_network.parameters(), lr=self.lr)
 
-    def softmax_policy(self, qvals, temp=0.9):
+    def softmax_policy(self, qvals):
         """
         Softmax policy - taken from Deep Reinforcement Learning in Action.
         """
-        soft = torch.exp(qvals/temp) / torch.sum(torch.exp(qvals/temp))
+        soft = torch.exp(qvals/self.temp) / torch.sum(torch.exp(qvals/self.temp))
         action = torch.multinomial(soft, 1) 
         return action.cpu().numpy().item()
 
@@ -62,7 +64,7 @@ class DQNAgent:
         qval = self.q_network(state_grid, state_metadata)
         
         if self.use_softmax:
-            action = self.softmax_policy(qval, temp=0.9)
+            action = self.softmax_policy(qval)
         else:
             if (random.random() < self.epsilon):
                 action = np.random.randint(0, self.n_actions)
