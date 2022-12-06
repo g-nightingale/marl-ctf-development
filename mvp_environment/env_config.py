@@ -60,7 +60,7 @@ GRID_LEN = 10
 # Rewards
 REWARD_CAPTURE = 100
 REWARD_STEP = -1
-WINNING_POINTS = 2
+WINNING_POINTS = 3
 
 # Agents and actions
 N_AGENTS = 4
