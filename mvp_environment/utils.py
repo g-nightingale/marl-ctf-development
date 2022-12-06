@@ -1,6 +1,7 @@
 import numpy as np
 import torch
 import utils as ut
+import matplotlib.pyplot as plt
 
 
 def add_noise(env_dims):
@@ -76,3 +77,45 @@ def test_model(env, agent_t1, agent_t2, env_dims, display=True, max_moves=50, de
                       \nTotal moves: {step_count}")
             break
 
+def plot_training_performance(score_history, 
+                              losses, 
+                              team_1_captures, 
+                              team_2_captures, 
+                              episode_step_counts):
+    """
+    Plot training performance metrics.
+    """
+    
+    fig, ax = plt.subplots(nrows=2, ncols=2, figsize=(10, 8))
+
+    ax[0, 0].set_title('sum of rewards')
+    ax[0, 0].plot(score_history, label='episode score', c='darkorange')
+    ax[0, 0].plot([np.mean(score_history[::-1][i:i+100]) for i in range(len(score_history))][::-1], label='average reward (last 100 episodes)', c='green')
+    ax[0, 0].set_xlabel("episodes")
+    ax[0, 0].set_ylabel("reward")
+    ax[0, 0].legend()
+
+    ax[0, 1].set_title('losses')
+    ax[0, 1].plot([l[0] for l in losses], label='team 1 losses', c='mediumblue')
+    ax[0, 1].plot([l[1] for l in losses], label='team 2 losses', c='firebrick')
+    ax[0, 1].set_xlabel("steps")
+    ax[0, 1].set_ylabel("losses")
+    ax[0, 1].legend()
+
+    ax[1, 0].set_title('team cumulative flag captures')
+    ax[1, 0].plot(np.cumsum(team_1_captures), label='team 1 cumulative flag captures', c='mediumblue')
+    ax[1, 0].plot(np.cumsum(team_2_captures), label='team 2 cumulative flag captures', c='firebrick')
+    ax[1, 0].set_xlabel("episodes")
+    ax[1, 0].set_ylabel("cumulative wins")
+    ax[1, 0].legend()
+
+    ax[1, 1].set_title('episode duration')
+    ax[1, 1].plot(episode_step_counts, label='episode duration', c='darkorange')
+    ax[1, 1].plot([np.mean(episode_step_counts[::-1][i:i+100]) for i in range(len(score_history))][::-1], label='average episode duration (last 100 episodes)', c='green')
+    ax[1, 1].set_xlabel("episodes")
+    ax[1, 1].set_ylabel("episode duration (steps)")
+    ax[1, 1].legend()
+
+    fig.tight_layout()
+    
+    plt.show()
