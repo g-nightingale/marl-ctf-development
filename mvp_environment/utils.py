@@ -10,14 +10,15 @@ def add_noise(env_dims):
     """
     return np.random.rand(*env_dims)/100.0
 
-def get_env_metadata(agent_idx, has_flag, device='cpu'):
+def get_env_metadata(agent_idx, has_flag, agent_types, device='cpu'):
     """
     Get agent turn and flag holder info.
     """
     agent_turn = np.array([0, 0, 0, 0], dtype=np.int8)
     agent_turn[agent_idx] = 1
 
-    return torch.cat((torch.from_numpy(agent_turn), torch.from_numpy(has_flag))).reshape(1, 8).float().to(device)
+    return torch.cat((torch.from_numpy(agent_turn), torch.from_numpy(agent_types), \
+                      torch.from_numpy(has_flag))).reshape(1, 12).float().to(device)
 
 def preprocess(grid, max_value=8.0):
     """
@@ -43,7 +44,7 @@ def test_model(env, agent_t1, agent_t2, env_dims, display=True, max_moves=50, de
         # Collect actions for each agent
         actions =[]
         for agent_idx in np.arange(4):
-            metadata_state = ut.get_env_metadata(agent_idx, env.has_flag)
+            metadata_state = ut.get_env_metadata(agent_idx, env.has_flag, env.agent_types_np)
             if env.AGENT_TEAMS[agent_idx]==0:
                 actions.append(agent_t1.choose_action(grid_state, metadata_state))
             else:
@@ -81,12 +82,14 @@ def plot_training_performance(score_history,
                               losses, 
                               team_1_captures, 
                               team_2_captures, 
+                              team_1_tags,
+                              team_2_tags,
                               episode_step_counts):
     """
     Plot training performance metrics.
     """
     
-    fig, ax = plt.subplots(nrows=2, ncols=2, figsize=(10, 8))
+    fig, ax = plt.subplots(nrows=3, ncols=2, figsize=(10, 12))
 
     ax[0, 0].set_title('sum of rewards')
     ax[0, 0].plot(score_history, label='episode score', c='darkorange')
@@ -109,12 +112,21 @@ def plot_training_performance(score_history,
     ax[1, 0].set_ylabel("cumulative wins")
     ax[1, 0].legend()
 
-    ax[1, 1].set_title('episode duration')
-    ax[1, 1].plot(episode_step_counts, label='episode duration', c='darkorange')
-    ax[1, 1].plot([np.mean(episode_step_counts[::-1][i:i+100]) for i in range(len(score_history))][::-1], label='average episode duration (last 100 episodes)', c='green')
+    ax[1, 1].set_title('team cumulative tags')
+    ax[1, 1].plot(np.cumsum(team_1_tags), label='team 1 cumulative tags', c='mediumblue')
+    ax[1, 1].plot(np.cumsum(team_2_tags), label='team 2 cumulative tags', c='firebrick')
     ax[1, 1].set_xlabel("episodes")
-    ax[1, 1].set_ylabel("episode duration (steps)")
+    ax[1, 1].set_ylabel("cumulative tags")
     ax[1, 1].legend()
+
+    ax[2, 0].set_title('episode duration')
+    ax[2, 0].plot(episode_step_counts, label='episode duration', c='darkorange')
+    ax[2, 0].plot([np.mean(episode_step_counts[::-1][i:i+100]) for i in range(len(score_history))][::-1], label='average episode duration (last 100 episodes)', c='green')
+    ax[2, 0].set_xlabel("episodes")
+    ax[2, 0].set_ylabel("episode duration (steps)")
+    ax[2, 0].legend()
+
+    ax[2, 1].set_axis_off()
 
     fig.tight_layout()
     

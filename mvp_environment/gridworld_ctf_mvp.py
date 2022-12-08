@@ -33,6 +33,8 @@ class GridworldCtf:
         self.FLAG_TILE_MAP = cfg.FLAG_TILE_MAP
         self.AGENT_TILE_MAP = cfg.AGENT_TILE_MAP
         self.AGENT_TEAMS = cfg.AGENT_TEAMS
+        self.AGENT_TYPES = cfg.AGENT_TYPES
+        self.TAG_PROBABILITY = cfg.TAG_PROBABILITY
         self.CAPTURE_POSITIONS = cfg.CAPTURE_POSITIONS
         self.COLOUR_MAP = cfg.COLOUR_MAP
         self._arr = np.arange(self.N_AGENTS)
@@ -45,6 +47,10 @@ class GridworldCtf:
         """
 
         self.agent_positions = self.AGENT_STARTING_POSITIONS.copy()
+        self.OPPONENTS = {
+            0: [k for k, v in self.AGENT_TEAMS.items() if v==1],
+            1: [k for k, v in self.AGENT_TEAMS.items() if v==0],
+        }
         
         if self.GAME_MODE=='static':
             self.grid = self.MAPS[self.DEFAULT_MAP].copy()
@@ -55,8 +61,10 @@ class GridworldCtf:
 
         self.init_objects()
         self.has_flag = np.zeros(self.N_AGENTS, dtype=np.int8)
+        self.agent_types_np = np.array([v for v in self.AGENT_TYPES.values()])
         self.done = False
         self.team_points = {0:0, 1:0}
+        self.tag_count = {0:0, 1:0}
 
     def init_objects(self) -> np.array:
         """"
@@ -147,6 +155,33 @@ class GridworldCtf:
         capture = np.abs(np.array([x, y]) - np.array([object_xy[0], object_xy[1]]))
         return max(capture) <= 1
 
+    def respawn(self, agent_idx):
+        """
+        Respawn agent near flag if tagged.
+        """
+
+        # Get agent team flag position - we will respawn around there
+        x, y = self.FLAG_POSITIONS[self.AGENT_TEAMS[agent_idx]]
+        possible_respawn_offset = np.where(self.grid[max(x-1, 0):x+2, max(y-1, 0):y+2]==self.OPEN_TILE)
+
+        # Choose an opn respawn location at random
+        rnd = np.random.randint(possible_respawn_offset[0].shape[0])
+        
+        # Get respawn position: WARNING - if the flag is at (0, 0) this will break 
+        new_pos = (x + possible_respawn_offset[0][rnd] - 1, y + possible_respawn_offset[1][rnd] - 1)
+
+        # Update tiles
+        self.grid[self.agent_positions[agent_idx]] = self.OPEN_TILE
+        self.grid[new_pos] = self.AGENT_TILE_MAP[agent_idx]
+        
+        # Update agent position
+        self.agent_positions[agent_idx] = new_pos
+
+        # Reset flag if agent has it
+        if self.has_flag[agent_idx]==1:
+            self.has_flag[agent_idx] = 0
+            self.grid[self.FLAG_POSITIONS[1-self.AGENT_TEAMS[agent_idx]]] = self.FLAG_TILE_MAP[1-self.AGENT_TEAMS[agent_idx]]
+
 
     def step(self, actions) -> tuple:
         """
@@ -158,6 +193,8 @@ class GridworldCtf:
 
         rewards = [0, 0, 0, 0]
         for agent_idx in self.dice_roll():
+            # Initialise reward counter
+            reward = 0
 
             # Get the agent team
             agent_team = self.AGENT_TEAMS[agent_idx]
@@ -169,21 +206,28 @@ class GridworldCtf:
             self.act(agent_idx, action)
 
             # If agent passes over flag square, set to zero and mark agent as having the flag
-            if self.check_object_distance(agent_idx, self.FLAG_TILE_MAP[1-agent_team]):
+            if self.AGENT_TYPES[agent_idx]==0 and self.check_object_distance(agent_idx, self.FLAG_TILE_MAP[1-agent_team]):
                 self.has_flag[agent_idx] = 1
                 self.grid[self.FLAG_POSITIONS[1-agent_team]] = self.PLACEHOLDER_TILE
-                #self.grid[self.FLAG_POSITIONS[1-agent_team]] = 0
-                reward = self.REWARD_STEP
             # Calculate rewards - game is done when the agent has the flag and reaches the capture position
-            elif self.has_flag[agent_idx] == 1 and self.check_object_distance2(agent_idx, self.CAPTURE_POSITIONS[agent_team]):
-                reward = self.REWARD_CAPTURE
+            elif self.AGENT_TYPES[agent_idx]==0 and self.has_flag[agent_idx] == 1 and self.check_object_distance2(agent_idx, self.CAPTURE_POSITIONS[agent_team]):
+                reward += self.REWARD_CAPTURE
                 self.has_flag[agent_idx] = 0
                 self.grid[self.FLAG_POSITIONS[1-agent_team]] = self.FLAG_TILE_MAP[1-agent_team]
                 self.team_points[agent_team] += 1
                 if self.team_points[agent_team] == self.WINNING_POINTS:
                     self.done = True
-            else:
-                reward = self.REWARD_STEP
+            
+            # Check for tag
+            if self.AGENT_TYPES[agent_idx]==1: 
+                for opp_agent_idx in self.OPPONENTS[agent_team]:
+                    if self.check_object_distance2(agent_idx, self.agent_positions[opp_agent_idx]):
+                        if np.random.rand() < self.TAG_PROBABILITY:
+                            self.respawn(opp_agent_idx)
+                            self.tag_count[agent_team] += 1
+
+            # Step reward is applied in all situations
+            reward += self.REWARD_STEP
 
             # Update agent specific reward
             rewards[agent_idx] = reward
@@ -283,7 +327,7 @@ class GridworldCtf:
                 grid_state = torch.from_numpy(grid_state_).float().to(device)
 
                 for agent_idx in np.arange(4):
-                    metadata_state = ut.get_env_metadata(agent_idx, self.has_flag)
+                    metadata_state = ut.get_env_metadata(agent_idx, self.has_flag, self.agent_types_np)
                     if self.AGENT_TEAMS[agent_idx]==0:
                         actions[agent_idx] = agent_t1.choose_action(grid_state, metadata_state)
                     else:

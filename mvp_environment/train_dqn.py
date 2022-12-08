@@ -15,7 +15,7 @@ def train_dqn(env,
             epsilon_min=0.1,
             n_random_steps=0,
             max_steps=1000,
-            learning_skip_steps = 1,
+            learning_skip_steps=1,
             device='cpu'):
     """
     Train DQN agent.
@@ -25,6 +25,8 @@ def train_dqn(env,
     done_count = 0
     team_1_captures = []
     team_2_captures = []
+    team_1_tags = []
+    team_2_tags = []
     episode_step_counts = []
     losses = []
     score_history = []
@@ -45,7 +47,7 @@ def train_dqn(env,
             # collect actions for each agent
             actions =[]
             for agent_idx in np.arange(4):
-                curr_metadata_state = ut.get_env_metadata(agent_idx, env.has_flag, device=device)
+                curr_metadata_state = ut.get_env_metadata(agent_idx, env.has_flag, env.agent_types_np, device=device)
                 if env.AGENT_TEAMS[agent_idx]==0:
                     actions.append(agent_t1.choose_action(curr_grid_state, curr_metadata_state))
                 else:
@@ -61,7 +63,7 @@ def train_dqn(env,
 
             # store each agent experiences
             for agent_idx in np.arange(4):
-                new_metadata_state = ut.get_env_metadata(agent_idx, env.has_flag, device=device)
+                new_metadata_state = ut.get_env_metadata(agent_idx, env.has_flag, env.agent_types_np, device=device)
 
                 # append replay buffer
                 if env.AGENT_TEAMS[agent_idx]==0:
@@ -100,6 +102,8 @@ def train_dqn(env,
             if done or episode_step_count > max_steps:
                 team_1_captures.append(env.team_points[0])
                 team_2_captures.append(env.team_points[1])
+                team_1_tags.append(env.tag_count[0])
+                team_2_tags.append(env.tag_count[1])
                 done_count += 1 * done
                 done = True
                 
@@ -113,9 +117,25 @@ def train_dqn(env,
 
         if i % 5 == 0:
             clear_output(wait=True)
-            print(f'episode: {i} \ntotal step count: {step_count} \nepisode step count: {episode_step_count} \
-                \nscore: {score} \naverage score: {np.mean(score_history[-100:])} \
-                \nepsilon: {round(epsilon_, 4)} \ndone count: {done_count} \
-                \nteam 1 captures: {sum(team_1_captures)} \nteam 2 captures: {sum(team_2_captures)}')
+            print(f'episode: {i} \
+                \ntotal step count: {step_count} \
+                \nepisode step count: {episode_step_count} \
+                \nscore: {score} \
+                \naverage score: {np.mean(score_history[-100:])} \
+                \nepsilon: {round(epsilon_, 4)} \
+                \ndone count: {done_count} \
+                \nteam 1 captures: {sum(team_1_captures)} \
+                \nteam 2 captures: {sum(team_2_captures)} \
+                \nteam 1 tags: {sum(team_1_tags)} \
+                \nteam 2 tags: {sum(team_2_tags)}')
 
-    return score_history, losses, team_1_captures, team_2_captures, episode_step_counts
+    # create set of training metrics
+    training_metrics = (score_history, 
+                        losses, 
+                        team_1_captures, 
+                        team_2_captures, 
+                        team_1_tags,
+                        team_2_tags,
+                        episode_step_counts)
+
+    return training_metrics

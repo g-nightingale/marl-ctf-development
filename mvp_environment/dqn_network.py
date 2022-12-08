@@ -17,7 +17,7 @@ class DQNNetwork(nn.Module):
         self.conv1 = nn.Conv2d(1, 3, 3)
         self.conv2 = nn.Conv2d(3, 8, 3)
 
-        self.fc_other_info1 = nn.Linear(8, 16)
+        self.fc_other_info1 = nn.Linear(12, 16)
         self.fc_other_info2 = nn.Linear(16, 8)
 
         self.fc1 = nn.Linear(8*6*6+8, 128)

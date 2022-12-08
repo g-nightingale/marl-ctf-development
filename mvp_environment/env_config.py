@@ -60,7 +60,7 @@ GRID_LEN = 10
 # Rewards
 REWARD_CAPTURE = 100
 REWARD_STEP = -1
-WINNING_POINTS = 3
+WINNING_POINTS = 1
 
 # Agents and actions
 N_AGENTS = 4
@@ -86,6 +86,17 @@ AGENT_TEAMS = {
     2: 1,
     3: 1
 }
+
+# Agent types: 0 = flag carrier, 1 = tagger
+AGENT_TYPES = {
+    0: 0,
+    1: 1,
+    2: 0,
+    3: 1
+}
+
+# Probability of a successful tag for a tagging agent
+TAG_PROBABILITY = 0.3
 
 # Tile values for each agent
 AGENT_TILE_MAP = {
