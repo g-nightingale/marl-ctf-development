@@ -117,7 +117,7 @@ def train_dqn(env,
 
         if i % 5 == 0:
             clear_output(wait=True)
-            print(f'episode: {i} \
+            print(f'episode: {i+1} \
                 \ntotal step count: {step_count} \
                 \nepisode step count: {episode_step_count} \
                 \nscore: {score} \
