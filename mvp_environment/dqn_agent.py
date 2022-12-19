@@ -21,7 +21,8 @@ class DQNAgent:
             device='cpu',
             loss='mse',
             ddqn=False,
-            available_actions=np.array([1, 1, 1, 1, 1])):
+            soft_update=False,
+            tau=0.1):
 
         self.q_network = q_network
         self.target_network = copy.deepcopy(q_network)
@@ -37,8 +38,6 @@ class DQNAgent:
         self.use_softmax = use_softmax
         self.n_actions = n_actions
         self.device = device
-        # up, down, left, right, nothing
-        self.available_actions = available_actions
 
         if loss == 'mse':
             self.loss_fn = torch.nn.MSELoss()
@@ -48,6 +47,8 @@ class DQNAgent:
             raise ValueError("Loss function not recognised")
 
         self.ddqn = ddqn
+        self.soft_update = soft_update
+        self.tau = tau
         self.optimizer = torch.optim.Adam(self.q_network.parameters(), lr=self.lr)
 
     def softmax_policy(self, qvals):
@@ -108,10 +109,32 @@ class DQNAgent:
         loss.backward()
         self.optimizer.step()
         
-        if step_count % self.target_update_steps == 0:
-            self.target_network.load_state_dict(self.q_network.state_dict())
+        # Update weights
+        if self.soft_update:
+            self.soft_weight_update()
+        else:
+            if step_count % self.target_update_steps == 0:
+                self.hard_weight_update()
 
         return loss.item()
+
+    def hard_weight_update(self):
+        """ 
+        Apply a hard weight update.
+        """
+        self.target_network.load_state_dict(self.q_network.state_dict())
+
+    def soft_weight_update(self, tau=None):
+        """
+        APply a soft weight update.
+        """
+        tau = self.tau if tau is None else tau
+        for target, online in zip(self.target_network.parameters(), 
+                                  self.q_network.parameters()):
+            target_ratio = (1.0 - tau) * target.data
+            online_ratio = tau * online.data
+            mixed_weights = target_ratio + online_ratio
+            target.data.copy_(mixed_weights)
 
     def save_model(self):
         self.q_network.save_model()
