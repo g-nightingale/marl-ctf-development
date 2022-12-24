@@ -5,8 +5,7 @@ import utils as ut
 
 
 def train_dqn(env,
-            agent_t1,
-            agent_t2,
+            agents,
             env_dims,
             epochs,
             batch_size,
@@ -46,12 +45,10 @@ def train_dqn(env,
 
             # collect actions for each agent
             actions =[]
-            for agent_idx in np.arange(4):
+            for agent_idx in np.arange(len(agents)):
                 curr_metadata_state = ut.get_env_metadata(agent_idx, env.has_flag, env.agent_types_np, device=device)
-                if env.AGENT_TEAMS[agent_idx]==0:
-                    actions.append(agent_t1.choose_action(curr_grid_state, curr_metadata_state))
-                else:
-                    actions.append(agent_t2.choose_action(curr_grid_state, curr_metadata_state))
+                actions.append(agents[agent_idx].choose_action(curr_grid_state, curr_metadata_state))
+
 
             # step the environment
             new_grid_state, rewards, done = env.step(actions)
@@ -66,37 +63,33 @@ def train_dqn(env,
                 new_metadata_state = ut.get_env_metadata(agent_idx, env.has_flag, env.agent_types_np, device=device)
 
                 # append replay buffer
-                if env.AGENT_TEAMS[agent_idx]==0:
-                    agent_t1.memory.append(
-                                        ((curr_grid_state, curr_metadata_state), 
-                                        actions[agent_idx], 
-                                        rewards[agent_idx], 
-                                        (new_grid_state, new_metadata_state), 
-                                        done)
-                                        )
-                else:
-                    agent_t2.memory.append(
-                                        ((curr_grid_state, curr_metadata_state), 
-                                        actions[agent_idx], 
-                                        rewards[agent_idx], 
-                                        (new_grid_state, new_metadata_state), 
-                                        done)
-                                        )
+                agents[agent_idx].memory.append(
+                                    ((curr_grid_state, curr_metadata_state), 
+                                    actions[agent_idx], 
+                                    rewards[agent_idx], 
+                                    (new_grid_state, new_metadata_state), 
+                                    done)
+                                    )
+
 
             curr_grid_state = new_grid_state
             
             # learning
             if step_count>n_random_steps \
                and step_count%learning_skip_steps==0 \
-               and min(len(agent_t1.memory), len(agent_t2.memory)) > batch_size:
-                loss_t1 = agent_t1.update_network(step_count)
-                loss_t2 = agent_t2.update_network(step_count)
+               and len(agents[0].memory) > batch_size:
+                loss_t1a1 = agents[0].update_network(step_count)
+                loss_t1a2 = agents[1].update_network(step_count)
+                loss_t2a1 = agents[2].update_network(step_count)
+                loss_t2a2 = agents[3].update_network(step_count)
             else:
-                loss_t1 = 0.0
-                loss_t2 = 0.0
+                loss_t1a1 = 0.0
+                loss_t1a2 = 0.0
+                loss_t2a1 = 0.0
+                loss_t2a2 = 0.0
 
             # append metrics
-            losses.append((loss_t1, loss_t2))  
+            losses.append((loss_t1a1, loss_t1a2, loss_t2a1,loss_t2a2))  
 
             # termination
             if done or episode_step_count > max_steps:
@@ -109,8 +102,10 @@ def train_dqn(env,
                 
         # decay epsilon
         epsilon_ = max(epsilon * epsilon_decay**i, epsilon_min)
-        agent_t1.epsilon = epsilon_
-        agent_t2.epsilon = epsilon_
+        agents[0].epsilon = epsilon_
+        agents[1].epsilon = epsilon_
+        agents[2].epsilon = epsilon_
+        agents[3].epsilon = epsilon_
 
         score_history.append(score)
         episode_step_counts.append(episode_step_count)

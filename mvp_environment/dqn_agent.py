@@ -5,28 +5,35 @@ import random
 import torch
 import torch.nn as nn
 import os
+from dqn_network import DQNNetwork
 
 class DQNAgent:
     def __init__(self, 
-            q_network, 
-            batch_size=128,
+            name, 
+            agent_type=0,
+            batch_size=32,
             gamma=0.9,
-            lr=0.0005,
-            epsilon=0.3,
+            lr=0.000025,
+            epsilon=1.0,
             temp=0.9,
-            target_update_steps=500,
-            mem_size=2000,
+            target_update_steps=1000,
+            mem_size=40000,
             use_softmax=False,
-            n_actions=5,
             device='cpu',
             loss='mse',
             ddqn=False,
             soft_update=False,
             tau=0.1):
 
-        self.q_network = q_network
-        self.target_network = copy.deepcopy(q_network)
-        self.target_network.load_state_dict(q_network.state_dict())
+        self.agent_type = agent_type
+        if agent_type in [0, 1]:
+            self.n_actions=4
+        elif agent_type == 2:
+            self.n_actions=12
+
+        self.q_network = DQNNetwork(name=name, device=device, n_actions=self.n_actions)
+        self.target_network = copy.deepcopy(self.q_network)
+        self.target_network.load_state_dict(self.q_network.state_dict())
 
         self.batch_size = batch_size
         self.gamma = gamma
@@ -36,7 +43,6 @@ class DQNAgent:
         self.target_update_steps = target_update_steps
         self.memory = deque(maxlen=mem_size)
         self.use_softmax = use_softmax
-        self.n_actions = n_actions
         self.device = device
 
         if loss == 'mse':
@@ -55,7 +61,12 @@ class DQNAgent:
         """
         Softmax policy - taken from Deep Reinforcement Learning in Action.
         """
-        soft = torch.exp(qvals/self.temp) / torch.sum(torch.exp(qvals/self.temp))
+        scaled_qvals = qvals/self.temp
+        norm_qvals = scaled_qvals - scaled_qvals.max() 
+        # temp
+        if scaled_qvals.max() == np.inf:
+            print('INFINITE Q-VALUE')
+        soft = torch.exp(norm_qvals) / torch.sum(torch.exp(norm_qvals))
         action = torch.multinomial(soft, 1) 
         return action.cpu().numpy().item()
 
@@ -75,8 +86,6 @@ class DQNAgent:
                 qval_ = qval.data.cpu().numpy()
                 action = np.argmax(qval_)
 
-        # apply mask based on agents abilities
-        #action *= self.available_actions
         return action
 
     def update_network(self, step_count):
@@ -126,7 +135,7 @@ class DQNAgent:
 
     def soft_weight_update(self, tau=None):
         """
-        APply a soft weight update.
+        Apply a soft weight update.
         """
         tau = self.tau if tau is None else tau
         for target, online in zip(self.target_network.parameters(), 

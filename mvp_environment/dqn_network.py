@@ -8,6 +8,7 @@ import os
 
 class DQNNetwork(nn.Module):
     def __init__(self, 
+                n_actions=4,
                 name='dqn',
                 chkpt_dir='saved_models',
                 device='cpu'):
@@ -21,12 +22,13 @@ class DQNNetwork(nn.Module):
         self.fc_other_info2 = nn.Linear(16, 8)
 
         self.fc1 = nn.Linear(8*6*6+8, 128)
-        self.fc2 = nn.Linear(128, 4)
+        self.fc2 = nn.Linear(128, n_actions)
         
         if device is not None:
             self.to(device)
 
         self.chkpt_file = os.path.join(chkpt_dir, name)
+        self.n_actions = n_actions
 
     def forward(self, state_grid, state_metadata):
         x1 = F.relu(self.conv1(state_grid))

@@ -91,6 +91,9 @@ class GridworldCtf:
         # Get the current position of the agent
         curr_pos = self.agent_positions[agent_idx]
 
+        #--------------------------------------------------------------------------------------------
+        # Movement actions for all agents
+        #--------------------------------------------------------------------------------------------
         # Move up
         if action == 0:
             if curr_pos[0] > 0 \
@@ -119,9 +122,56 @@ class GridworldCtf:
                 self.grid[curr_pos] = 0
                 curr_pos = (curr_pos[0], curr_pos[1] - 1)
                 self.grid[curr_pos] = self.AGENT_TILE_MAP[agent_idx]
-        # Do nothing
+        #--------------------------------------------------------------------------------------------
+        # Actions specific to builder agent
+        #--------------------------------------------------------------------------------------------
+        # Add block up top
         elif action == 4:
-            pass
+            if curr_pos[0] > 0 \
+              and self.grid[curr_pos[0] - 1, curr_pos[1]] == self.OPEN_TILE:
+                self.grid[curr_pos[0] - 1, curr_pos[1]] = self.BLOCK_TILE
+        # Add block on bottom
+        elif action == 5:
+            if curr_pos[0] < (self.GRID_LEN-1) \
+              and self.grid[curr_pos[0] + 1, curr_pos[1]] == self.OPEN_TILE:
+                self.grid[curr_pos[0] + 1, curr_pos[1]] == self.BLOCK_TILE
+        # Add block to right
+        elif action == 6:
+            if curr_pos[1] < (self.GRID_LEN-1) \
+              and self.grid[curr_pos[0], curr_pos[1] + 1] == self.OPEN_TILE:
+                self.grid[curr_pos[0], curr_pos[1] + 1] == self.BLOCK_TILE
+        # Add block to left
+        elif action == 7:
+            if curr_pos[1] > 0 \
+              and self.grid[curr_pos[0], curr_pos[1] - 1] == self.OPEN_TILE:
+                self.grid[curr_pos[0], curr_pos[1] - 1] == self.BLOCK_TILE
+        #--------------------------------------------------------------------------------------------
+        # Actions specific to deconstructor agent
+        #--------------------------------------------------------------------------------------------
+        # Remove block up top
+        elif action == 8:
+            if curr_pos[0] > 0 \
+              and self.grid[curr_pos[0] - 1, curr_pos[1]] == self.BLOCK_TILE:
+                self.grid[curr_pos[0] - 1, curr_pos[1]] = self.OPEN_TILE
+        # Remove block on bottom
+        elif action == 9:
+            if curr_pos[0] < (self.GRID_LEN-1) \
+              and self.grid[curr_pos[0] + 1, curr_pos[1]] == self.BLOCK_TILE:
+                self.grid[curr_pos[0] + 1, curr_pos[1]] == self.OPEN_TILE
+        # Remove block to right
+        elif action == 10:
+            if curr_pos[1] < (self.GRID_LEN-1) \
+              and self.grid[curr_pos[0], curr_pos[1] + 1] == self.BLOCK_TILE:
+                self.grid[curr_pos[0], curr_pos[1] + 1] == self.OPEN_TILE
+        # Remove block to left
+        elif action == 11:
+            if curr_pos[1] > 0 \
+              and self.grid[curr_pos[0], curr_pos[1] - 1] == self.BLOCK_TILE:
+                self.grid[curr_pos[0], curr_pos[1] - 1] == self.OPEN_TILE
+
+        # Do nothing -> removed for now
+        # elif action == 12:
+        #     pass
 
         # Update agent position
         self.agent_positions[agent_idx] = curr_pos
@@ -164,7 +214,7 @@ class GridworldCtf:
         x, y = self.FLAG_POSITIONS[self.AGENT_TEAMS[agent_idx]]
         possible_respawn_offset = np.where(self.grid[max(x-1, 0):x+2, max(y-1, 0):y+2]==self.OPEN_TILE)
 
-        # Choose an opn respawn location at random
+        # Choose an open respawn location at random
         rnd = np.random.randint(possible_respawn_offset[0].shape[0])
         
         # Get respawn position: WARNING - if the flag is at (0, 0) this will break 
@@ -297,11 +347,6 @@ class GridworldCtf:
 
         raw_action = None
 
-        # Get agents if provided
-        if agents is not None:
-            agent_t1 = agents[0]
-            agent_t2 = agents[1]
-
         self.render()
 
         # start main loop
@@ -321,18 +366,15 @@ class GridworldCtf:
             # initialise random actions
             actions = np.random.randint(4, size=4)
 
-            # if agents are supplied,
+            # if agents are supplied, get agent actions
             if agents is not None:
                 grid_state_ = self.grid.reshape(*env_dims) + ut.add_noise(env_dims)
                 grid_state = torch.from_numpy(grid_state_).float().to(device)
 
                 for agent_idx in np.arange(4):
                     metadata_state = ut.get_env_metadata(agent_idx, self.has_flag, self.agent_types_np)
-                    if self.AGENT_TEAMS[agent_idx]==0:
-                        actions[agent_idx] = agent_t1.choose_action(grid_state, metadata_state)
-                    else:
-                        actions[agent_idx] = agent_t2.choose_action(grid_state, metadata_state)
-                
+                    actions[agent_idx] = agents[agent_idx].choose_action(grid_state, metadata_state)
+
             # insert player action
             actions[player] = int(ACTIONS_MAP[raw_action])
 

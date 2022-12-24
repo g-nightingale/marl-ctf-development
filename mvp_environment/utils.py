@@ -26,7 +26,7 @@ def preprocess(grid, max_value=8.0):
     """
     return np.divide(grid, max_value, dtype=np.float16)
 
-def test_model(env, agent_t1, agent_t2, env_dims, display=True, max_moves=50, device='cpu'):
+def test_model(env, agents, env_dims, display=True, max_moves=50, device='cpu'):
     """
     Test the trained agent policies.
     """
@@ -45,10 +45,7 @@ def test_model(env, agent_t1, agent_t2, env_dims, display=True, max_moves=50, de
         actions =[]
         for agent_idx in np.arange(4):
             metadata_state = ut.get_env_metadata(agent_idx, env.has_flag, env.agent_types_np)
-            if env.AGENT_TEAMS[agent_idx]==0:
-                actions.append(agent_t1.choose_action(grid_state, metadata_state))
-            else:
-                actions.append(agent_t2.choose_action(grid_state, metadata_state))
+            actions.append(agents[agent_idx].choose_action(grid_state, metadata_state))
 
         # Step the environment
         grid_state, rewards, done = env.step(actions)
