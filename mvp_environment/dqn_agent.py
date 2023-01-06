@@ -10,7 +10,7 @@ from dqn_network import DQNNetwork
 class DQNAgent:
     def __init__(self, 
             name, 
-            agent_type=0,
+            n_actions=8,
             batch_size=32,
             gamma=0.9,
             lr=0.000025,
@@ -25,12 +25,7 @@ class DQNAgent:
             soft_update=False,
             tau=0.1):
 
-        self.agent_type = agent_type
-        if agent_type in [0, 1]:
-            self.n_actions=4
-        elif agent_type == 2:
-            self.n_actions=12
-
+        self.n_actions = n_actions
         self.q_network = DQNNetwork(name=name, device=device, n_actions=self.n_actions)
         self.target_network = copy.deepcopy(self.q_network)
         self.target_network.load_state_dict(self.q_network.state_dict())
@@ -63,9 +58,6 @@ class DQNAgent:
         """
         scaled_qvals = qvals/self.temp
         norm_qvals = scaled_qvals - scaled_qvals.max() 
-        # temp
-        if scaled_qvals.max() == np.inf:
-            print('INFINITE Q-VALUE')
         soft = torch.exp(norm_qvals) / torch.sum(torch.exp(norm_qvals))
         action = torch.multinomial(soft, 1) 
         return action.cpu().numpy().item()

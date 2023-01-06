@@ -8,6 +8,7 @@ import os
 
 class DQNNetwork(nn.Module):
     def __init__(self, 
+                n_channels=1,
                 n_actions=4,
                 name='dqn',
                 chkpt_dir='saved_models',
@@ -15,13 +16,13 @@ class DQNNetwork(nn.Module):
         super().__init__()
         # channels / filters / filter size
         # Reminder: height and width of next conv layer = W_1 = [(W_0 + 2P - F)/S] + 1
-        self.conv1 = nn.Conv2d(1, 3, 3)
+        self.conv1 = nn.Conv2d(n_channels, 3, 3)
         self.conv2 = nn.Conv2d(3, 8, 3)
 
-        self.fc_other_info1 = nn.Linear(12, 16)
-        self.fc_other_info2 = nn.Linear(16, 8)
+        self.fc_other_info1 = nn.Linear(22, 32)
+        self.fc_other_info2 = nn.Linear(32, 16)
 
-        self.fc1 = nn.Linear(8*6*6+8, 128)
+        self.fc1 = nn.Linear(8*6*6+16, 128)
         self.fc2 = nn.Linear(128, n_actions)
         
         if device is not None:
