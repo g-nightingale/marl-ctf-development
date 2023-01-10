@@ -7,17 +7,16 @@ from collections import defaultdict
 def train_dqn(env,
             agent_t1,
             agent_t2,
-            env_dims,
             epochs,
             batch_size,
-            n_agents=4,
             epsilon=1.0,
             epsilon_decay=0.999,
             epsilon_min=0.1,
             n_random_steps=0,
             max_steps=1000,
             learning_skip_steps=1,
-            use_standardised_state=True,
+            use_ego_state=False,
+            scale_tiles=False,
             device='cpu'):
     """
     Train DQN agent.
@@ -45,25 +44,29 @@ def train_dqn(env,
 
     for i in range(epochs):
         env.reset()
-
-        curr_grid_state_ = env.grid.reshape(*env_dims) + ut.add_noise(env_dims)
-        curr_grid_state = torch.from_numpy(curr_grid_state_).float().to(device)
-
         done = False
         episode_step_count = 0
         score = 0
+
+        if use_ego_state:
+            env_dims = env.EGO_ENV_DIMS
+        else:
+            env_dims = env.ENV_DIMS
+
         while not done: 
             step_count += 1
             episode_step_count += 1
 
             # Collect actions for each agent
             actions =[]
-            for agent_idx in np.arange(n_agents):
+            for agent_idx in np.arange(env.N_AGENTS):
                 #curr_metadata_state = ut.get_env_metadata(agent_idx, env.has_flag, env.agent_types_np, device=device)
-                curr_metadata_state = torch.from_numpy(env.get_env_metadata(agent_idx)).reshape(1, 22).float().to(device)
-                if use_standardised_state:
-                    curr_grid_state_ = env.get_standardised_state(agent_idx) + ut.add_noise(env_dims)
-                    curr_grid_state = torch.from_numpy(curr_grid_state_).float().to(device)
+                curr_metadata_state = torch.from_numpy(env.get_env_metadata(agent_idx)).reshape(1, env.METADATA_VECTOR_LEN).float().to(device)
+
+                # If using the standardised states, get the agent specific states
+                curr_grid_state_ = env.standardise_state(agent_idx, use_ego_state=use_ego_state, scale_tiles=scale_tiles).reshape(*env_dims) + ut.add_noise(env_dims)
+                curr_grid_state = torch.from_numpy(curr_grid_state_).float().to(device)
+
                 if env.AGENT_TEAMS[agent_idx]==0:
                     actions.append(agent_t1.choose_action(curr_grid_state, curr_metadata_state))
                 else:
@@ -71,16 +74,17 @@ def train_dqn(env,
 
             # Step the environment
             new_grid_state, rewards, done = env.step(actions)
-            new_grid_state_ = new_grid_state.reshape(*env_dims) + ut.add_noise(env_dims)
-            new_grid_state = torch.from_numpy(new_grid_state_).float().to(device)
 
             # Increment score
             score += sum(rewards)
 
             # Store each agent experiences
-            for agent_idx in np.arange(n_agents):
+            for agent_idx in np.arange(env.N_AGENTS):
                 #new_metadata_state = ut.get_env_metadata(agent_idx, env.has_flag, env.agent_types_np, device=device)
-                new_metadata_state = torch.from_numpy(env.get_env_metadata(agent_idx)).reshape(1, 22).float().to(device)
+                new_metadata_state = torch.from_numpy(env.get_env_metadata(agent_idx)).reshape(1, env.METADATA_VECTOR_LEN).float().to(device)
+
+                new_grid_state_ = env.standardise_state(agent_idx, use_ego_state=use_ego_state, scale_tiles=scale_tiles).reshape(*env_dims) + ut.add_noise(env_dims)
+                new_grid_state = torch.from_numpy(new_grid_state_).float().to(device)
 
                 # Append replay buffer
                 if env.AGENT_TEAMS[agent_idx]==0:
@@ -100,8 +104,6 @@ def train_dqn(env,
                                         done)
                                         )
 
-            curr_grid_state = new_grid_state
-            
             # Learning
             if step_count>n_random_steps \
                and step_count%learning_skip_steps==0 \
@@ -112,16 +114,14 @@ def train_dqn(env,
                 loss_t1 = 0.0
                 loss_t2 = 0.0
 
-            # Losses
-            training_metrics['losses'].append((loss_t1, loss_t2))   
-
             # Termination -> Append metrics
             if done or episode_step_count > max_steps:
+                training_metrics['losses'].append((loss_t1, loss_t2))   
                 training_metrics['team_1_captures'].append(env.metrics['team_points'][0])
                 training_metrics['team_2_captures'].append(env.metrics['team_points'][1])
                 training_metrics['team_1_tags'].append(env.metrics['tag_count'][0])
                 training_metrics['team_2_tags'].append(env.metrics['tag_count'][1])
-                for agent_idx in range(n_agents):
+                for agent_idx in range(env.N_AGENTS):
                     training_metrics["agent_tag_count"][agent_idx].append(env.metrics['agent_tag_count'][agent_idx])
                     training_metrics["agent_flag_captures"][agent_idx].append(env.metrics['agent_flag_captures'][agent_idx])
                     training_metrics["agent_blocks_laid"][agent_idx].append(env.metrics['agent_blocks_laid'][agent_idx])

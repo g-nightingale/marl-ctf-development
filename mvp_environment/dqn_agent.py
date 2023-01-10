@@ -10,7 +10,9 @@ from dqn_network import DQNNetwork
 class DQNAgent:
     def __init__(self, 
             name, 
+            grid_len,
             n_actions=8,
+            n_channels=1,
             batch_size=32,
             gamma=0.9,
             lr=0.000025,
@@ -26,7 +28,8 @@ class DQNAgent:
             tau=0.1):
 
         self.n_actions = n_actions
-        self.q_network = DQNNetwork(name=name, device=device, n_actions=self.n_actions)
+        self.n_channels = n_channels
+        self.q_network = DQNNetwork(grid_len=grid_len, name=name, device=device, n_actions=self.n_actions, n_channels=self.n_channels)
         self.target_network = copy.deepcopy(self.q_network)
         self.target_network.load_state_dict(self.q_network.state_dict())
 
