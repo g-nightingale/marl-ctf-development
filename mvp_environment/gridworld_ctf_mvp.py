@@ -177,6 +177,9 @@ class GridworldCtf:
                     13: np.array([153, 51, 255]) # purple
         }  
 
+        # Override standardisation
+        self.STANDARDISATION_OVERRIDE = False
+
         # Reset the environment
         self.reset()
 
@@ -234,8 +237,7 @@ class GridworldCtf:
             "agent_blocks_mined": defaultdict(int),
             "agent_total_distance_to_own_flag": defaultdict(int),
             "agent_total_distance_to_opp_flag": defaultdict(int),
-            "agent_health_pickups": defaultdict(int),
-            "agent_visitation_maps": defaultdict(np.zeros((self.GRID_LEN, self.GRID_LEN), dtype=np.uint8))
+            "agent_health_pickups": defaultdict(int)
         }
 
 
@@ -694,6 +696,10 @@ class GridworldCtf:
             2) Ego state is generated if chosen.
             3) Tile values are scaled between 0 and 1.
         """
+
+        # Override standardisation and return environment grid
+        if self.STANDARDISATION_OVERRIDE:
+            return self.grid
 
         # Copy game grid
         grid = self.grid.copy()

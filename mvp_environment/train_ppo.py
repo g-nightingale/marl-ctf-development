@@ -1,50 +1,156 @@
 import numpy as np
-from ppo import Agent
-from utils import plot_learning_curve
+from ppo import PPOAgent
+from gridworld_ctf_mvp import GridworldCtf
+from collections import defaultdict
+import torch
+from IPython.display import clear_output
+import utils as ut
 
-if __name__ == '__main__':
-    env = gym.make('CartPole-v0')
-    N = 20
-    batch_size = 5
-    n_epochs = 4
-    alpha = 0.0003
-    agent = Agent(n_actions=env.action_space.n, batch_size=batch_size, 
-                    alpha=alpha, n_epochs=n_epochs, 
-                    input_dims=env.observation_space.shape)
-    n_games = 300
+def train_ppo(env,
+            agent_t1,
+            agent_t2,
+            n_episodes,
+            learning_steps=20,
+            max_steps=1000,
+            use_ego_state=False,
+            scale_tiles=False,
+            device='cpu'):
+    """
+    Train PPO agent.
+    """
 
-    figure_file = 'plots/cartpole.png'
+    step_count = 0
+    done_count = 0
 
-    best_score = env.reward_range[0]
-    score_history = []
+    training_metrics = {
+        "score_history": [], 
+        "losses": [],
+        "team_1_captures": [], 
+        "team_2_captures": [],
+        "team_1_tags": [],
+        "team_2_tags": [],
+        "episode_step_counts": [],
+        "agent_tag_count": defaultdict(list),
+        "agent_flag_captures": defaultdict(list),
+        "agent_blocks_laid": defaultdict(list),
+        "agent_blocks_mined": defaultdict(list),
+        "agent_avg_distance_to_own_flag": defaultdict(list),
+        "agent_avg_distance_to_opp_flag": defaultdict(list),
+        "agent_health_pickups": defaultdict(list),
+    }
 
-    learn_iters = 0
-    avg_score = 0
-    n_steps = 0
 
-    for i in range(n_games):
-        observation = env.reset()
+    for i in range(n_episodes):
+        env.reset()
         done = False
+        episode_step_count = 0
         score = 0
-        while not done:
-            action, prob, val = agent.choose_action(observation)
-            observation_, reward, done, info = env.step(action)
-            n_steps += 1
-            score += reward
-            agent.remember(observation, action, prob, val, reward, done)
-            if n_steps % N == 0:
-                agent.learn()
-                learn_iters += 1
-            observation = observation_
-        score_history.append(score)
-        avg_score = np.mean(score_history[-100:])
 
-        if avg_score > best_score:
-            best_score = avg_score
-            agent.save_models()
+        if use_ego_state:
+            env_dims = env.EGO_ENV_DIMS
+        else:
+            env_dims = env.ENV_DIMS
 
-        print('episode', i, 'score %.1f' % score, 'avg score %.1f' % avg_score,
-                'time_steps', n_steps, 'learning_steps', learn_iters)
-    x = [i+1 for i in range(len(score_history))]
-    plot_learning_curve(x, score_history, figure_file)
+        while not done: 
+            step_count += 1
+            episode_step_count += 1
 
+            # Collect actions for each agent
+            actions = []
+            probs = []
+            vals = []
+            for agent_idx in np.arange(env.N_AGENTS):
+                curr_metadata_state = torch.from_numpy(env.get_env_metadata(agent_idx)).reshape(1, env.METADATA_VECTOR_LEN).float().to(device)
+
+                # If using the standardised states, get the agent specific states
+                curr_grid_state_ = env.standardise_state(agent_idx, use_ego_state=use_ego_state, scale_tiles=scale_tiles).reshape(*env_dims) + ut.add_noise(env_dims)
+                curr_grid_state = torch.from_numpy(curr_grid_state_).float().to(device)
+
+                #curr_grid_state = env.standardise_state(agent_idx, use_ego_state=use_ego_state, scale_tiles=scale_tiles).reshape(*env_dims) + ut.add_noise(env_dims)
+
+                if env.AGENT_TEAMS[agent_idx]==0:
+                    action, prob, val = agent_t1.choose_action(curr_grid_state, curr_metadata_state)
+                    actions.append(action)
+                    probs.append(prob)
+                    vals.append(val)
+                else:
+                    action, prob, val = agent_t2.choose_action(curr_grid_state, curr_metadata_state)
+                    actions.append(action)
+                    probs.append(prob)
+                    vals.append(val)
+
+            # Step the environment
+            _, rewards, done = env.step(actions)
+
+            # Increment score
+            score += sum(rewards)
+
+            # Store each agent experiences
+            for agent_idx in np.arange(env.N_AGENTS):
+                # Append replay buffer
+                if env.AGENT_TEAMS[agent_idx]==0:
+                    agent_t1.store_memory(curr_grid_state, 
+                                        curr_metadata_state, 
+                                        actions[agent_idx], 
+                                        probs[agent_idx],
+                                        vals[agent_idx],
+                                        rewards[agent_idx], 
+                                        done
+                                        )
+                else:
+                    agent_t2.store_memory(curr_grid_state, 
+                                        curr_metadata_state, 
+                                        actions[agent_idx], 
+                                        probs[agent_idx],
+                                        vals[agent_idx],
+                                        rewards[agent_idx], 
+                                        done
+                                        )
+
+            # Learning
+            if step_count % learning_steps == 0 and step_count > agent_t1.batch_size:
+                loss_t1 = agent_t1.learn().detach().numpy()
+                loss_t2 = agent_t2.learn().detach().numpy()
+            else:
+                loss_t1 = 0.0
+                loss_t2 = 0.0
+
+            # Termination -> Append metrics
+            if done or episode_step_count > max_steps:
+                training_metrics['losses'].append((loss_t1, loss_t2))   
+                training_metrics['team_1_captures'].append(env.metrics['team_points'][0])
+                training_metrics['team_2_captures'].append(env.metrics['team_points'][1])
+                training_metrics['team_1_tags'].append(env.metrics['tag_count'][0])
+                training_metrics['team_2_tags'].append(env.metrics['tag_count'][1])
+                for agent_idx in range(env.N_AGENTS):
+                    training_metrics["agent_tag_count"][agent_idx].append(env.metrics['agent_tag_count'][agent_idx])
+                    training_metrics["agent_flag_captures"][agent_idx].append(env.metrics['agent_flag_captures'][agent_idx])
+                    training_metrics["agent_blocks_laid"][agent_idx].append(env.metrics['agent_blocks_laid'][agent_idx])
+                    training_metrics["agent_blocks_mined"][agent_idx].append(env.metrics['agent_blocks_mined'][agent_idx])
+                    training_metrics["agent_avg_distance_to_own_flag"][agent_idx].append(env.metrics['agent_total_distance_to_own_flag'][agent_idx]/env.env_step_count)
+                    training_metrics["agent_avg_distance_to_opp_flag"][agent_idx].append(env.metrics['agent_total_distance_to_opp_flag'][agent_idx]/env.env_step_count)
+                    training_metrics["agent_health_pickups"][agent_idx].append(env.metrics['agent_health_pickups'][agent_idx])
+
+                done_count += 1 * done
+                done = True
+                
+        training_metrics['score_history'].append(score)
+        training_metrics['episode_step_counts'].append(episode_step_count)
+
+        if i % 5 == 0:
+            clear_output(wait=True)
+            print(f"episode: {i+1} \
+                \ntotal step count: {step_count} \
+                \nepisode step count: {episode_step_count} \
+                \nscore: {score} \
+                \naverage score: {np.mean(training_metrics['score_history'][-100:])} \
+                \ndone count: {done_count} \
+                \nteam 1 captures: {sum(training_metrics['team_1_captures'])} \
+                \nteam 2 captures: {sum(training_metrics['team_2_captures'])} \
+                \nagent actions: {actions}" )
+
+        # if avg_score > best_score:
+        #     best_score = avg_score
+        #     agent.save_models()
+
+    return training_metrics

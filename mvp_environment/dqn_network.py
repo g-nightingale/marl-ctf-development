@@ -22,7 +22,6 @@ class DQNNetwork(nn.Module):
                 fc_other_info1_output_dim=32,
                 fc_other_info2_output_dim=32,
                 fc1_output_dim=128,
-                fc2_output_dim=64,
                 chkpt_dir='saved_models',
                 device='cpu'):
         super().__init__()
@@ -43,7 +42,6 @@ class DQNNetwork(nn.Module):
         self.fc_other_info2_output_dim = fc_other_info2_output_dim
 
         self.fc1_output_dim = fc1_output_dim
-        self.fc2_output_dim = fc2_output_dim
 
         # Create network shapes
         # in channels / out channels / filter size
@@ -69,8 +67,7 @@ class DQNNetwork(nn.Module):
 
         #self.fc1 = nn.Linear(8*6*6+16, 128)
         self.fc1 = nn.Linear(conv3_unrolled_dim + self.fc_other_info2_output_dim, self.fc1_output_dim)
-        self.fc2 = nn.Linear(self.fc1_output_dim, self.fc2_output_dim)
-        self.fc3 = nn.Linear(self.fc2_output_dim, n_actions)
+        self.fc2 = nn.Linear(self.fc1_output_dim, n_actions)
         
         if device is not None:
             self.to(device)
@@ -89,8 +86,7 @@ class DQNNetwork(nn.Module):
 
         x3 = torch.concat((x1, x2), dim=1)
         x3 = F.relu(self.fc1(x3))
-        x3 = F.relu(self.fc2(x3))
-        x3 = self.fc3(x3)
+        x3 = self.fc2(x3)
         return x3
 
     def save_model(self):

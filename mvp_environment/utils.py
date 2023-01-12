@@ -26,7 +26,73 @@ def preprocess(grid, max_value=8.0):
     """
     return np.divide(grid, max_value, dtype=np.float16)
 
-def test_model(env, 
+def test_model_ppo(env, 
+                agent_t1, 
+                agent_t2, 
+                display=True, 
+                use_ego_state=False,
+                scale_tiles=False,
+                max_moves=50, 
+                device='cpu'):
+    """
+    Test the trained agent policies.
+    """
+    env.reset()
+
+    done = False
+    step_count = 0
+    score = 0
+
+    if use_ego_state:
+        env_dims = env.EGO_ENV_DIMS
+    else:
+        env_dims = env.ENV_DIMS
+
+    while not done: 
+        step_count += 1
+
+        # Collect actions for each agent
+        actions =[]
+        for agent_idx in np.arange(env.N_AGENTS):
+            metadata_state = torch.from_numpy(env.get_env_metadata(agent_idx)).reshape(1, env.METADATA_VECTOR_LEN).float().to(device)
+            
+            grid_state_ = env.standardise_state(agent_idx, use_ego_state=use_ego_state, scale_tiles=scale_tiles).reshape(*env_dims) + ut.add_noise(env_dims)
+            grid_state = torch.from_numpy(grid_state_).float().to(device)
+
+            if env.AGENT_TEAMS[agent_idx]==0:
+                action, _, _ = agent_t1.choose_action(grid_state, metadata_state)
+                actions.append(action)
+            else:
+                action, _, _ = agent_t2.choose_action(grid_state, metadata_state)
+                actions.append(action)
+
+        # Step the environment
+        _, rewards, done = env.step(actions)
+
+        # Increment score
+        score += sum(rewards)
+
+        if display:
+            env.render(sleep_time=0.1)
+
+        if done:
+            if display:
+                print(f"Game won! \
+                      \nFinal score: {score} \
+                      \nTeam 1 score: {env.metrics['team_points'][0]} \
+                      \nTeam 2 score: {env.metrics['team_points'][1]} \
+                      \nTotal moves: {step_count}")
+       
+        if (step_count > max_moves):
+            if display:
+                print(f"Move limit reached. \
+                      \nFinal score: {score} \
+                      \nTeam 1 score: {env.metrics['team_points'][0]} \
+                      \nTeam 2 score: {env.metrics['team_points'][1]} \
+                      \nTotal moves: {step_count}")
+            break
+
+def test_model_dqn(env, 
                 agent_t1, 
                 agent_t2, 
                 display=True, 
