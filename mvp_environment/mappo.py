@@ -256,6 +256,7 @@ class CriticNetwork(nn.Module):
         x1 = T.flatten(x1, 1) # flatten all dimensions except batch
 
         x2 = T.relu(self.fc_other_info1(state_metadata))
+        x2 = T.flatten(x2, 1) # TODO: Why didn't we need to flatten before?
 
         x3 = T.concat((x1, x2), dim=1)
         x3 = T.relu(self.fc1(x3))

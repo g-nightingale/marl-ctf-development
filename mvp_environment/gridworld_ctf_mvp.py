@@ -19,7 +19,7 @@ class GridworldCtf:
                     1: {'team':1, 'type':0},
                 },
                 GAME_MODE='static',
-                GRID_LEN=10,
+                GRID_SIZE=10,
                 ENABLE_PICKUPS=False,
                 ENABLE_OBSTACLES=False,
                 DROP_FLAG_WHEN_NO_HP=False,
@@ -36,10 +36,8 @@ class GridworldCtf:
         #----------------------------------------------------------------------------------
         self.AGENT_CONFIG = AGENT_CONFIG
         self.GAME_MODE = GAME_MODE # static or random
-        self.GRID_LEN = GRID_LEN
-        self.ENV_DIMS = (1, 1, GRID_LEN, GRID_LEN)
-        self.EGO_GRID_LEN = GRID_LEN*2 - 1
-        self.EGO_ENV_DIMS = (1, 1, self.EGO_GRID_LEN, self.EGO_GRID_LEN)
+        self.GRID_SIZE = GRID_SIZE
+        self.ENV_DIMS = (1, 1, GRID_SIZE, GRID_SIZE)
         self.ENABLE_PICKUPS = ENABLE_PICKUPS
         self.ENABLE_OBSTACLES = ENABLE_OBSTACLES
         self.DROP_FLAG_WHEN_NO_HP = DROP_FLAG_WHEN_NO_HP
@@ -64,13 +62,13 @@ class GridworldCtf:
         # Position of flags for each team
         self.FLAG_POSITIONS = {
             0: (1, 1),
-            1: (self.GRID_LEN-2, self.GRID_LEN-2)
+            1: (self.GRID_SIZE-2, self.GRID_SIZE-2)
         }
 
         # Capture positions for each team
         self.CAPTURE_POSITIONS = {
             0: (1, 1),
-            1: (self.GRID_LEN-2, self.GRID_LEN-2)
+            1: (self.GRID_SIZE-2, self.GRID_SIZE-2)
         }
 
         self._arr = np.arange(self.N_AGENTS)
@@ -82,11 +80,11 @@ class GridworldCtf:
         # Starting positions for each agent
         self.AGENT_STARTING_POSITIONS = {
             0: (0, 2),
-            1: (GRID_LEN-3, GRID_LEN-1),
+            1: (GRID_SIZE-3, GRID_SIZE-1),
             2: (2, 0),
-            3: (GRID_LEN-1, GRID_LEN-3),
+            3: (GRID_SIZE-1, GRID_SIZE-3),
             4: (2, 2),
-            5: (GRID_LEN-3, GRID_LEN-3),
+            5: (GRID_SIZE-3, GRID_SIZE-3),
         }
 
         # Teams that agent's belong to: 0 = team 1, 1 = team 2
@@ -212,7 +210,7 @@ class GridworldCtf:
         }
         
         if self.GAME_MODE=='static':
-            self.grid = np.zeros((self.GRID_LEN, self.GRID_LEN), dtype=np.uint8)
+            self.grid = np.zeros((self.GRID_SIZE, self.GRID_SIZE), dtype=np.uint8)
             self.init_objects()
         elif self.GAME_MODE =='random':
             self.generate_map()
@@ -253,7 +251,7 @@ class GridworldCtf:
             "agent_total_distance_to_own_flag": defaultdict(int),
             "agent_total_distance_to_opp_flag": defaultdict(int),
             "agent_health_pickups": defaultdict(int),
-            "agent_visitation_maps": defaultdict(lambda: np.zeros((self.GRID_LEN, self.GRID_LEN), dtype=np.uint8))
+            "agent_visitation_maps": defaultdict(lambda: np.zeros((self.GRID_SIZE, self.GRID_SIZE), dtype=np.uint8))
         }
 
         # Update the visitation maps with starting positions
@@ -325,14 +323,14 @@ class GridworldCtf:
         """
 
         # Initialise grid
-        grid = np.zeros((self.GRID_LEN, self.GRID_LEN), dtype=np.uint8)
+        grid = np.zeros((self.GRID_SIZE, self.GRID_SIZE), dtype=np.uint8)
 
         # Place obstacles
         if self.ENABLE_OBSTACLES:
-            while (grid==self.DESTRUCTIBLE_TILE1).sum() < self.GRID_LEN**2 * self.MAX_BLOCK_TILE_PCT:
+            while (grid==self.DESTRUCTIBLE_TILE1).sum() < self.GRID_SIZE**2 * self.MAX_BLOCK_TILE_PCT:
                 # Get random coordinates
-                x = np.random.randint(0, self.GRID_LEN-1)
-                y = np.random.randint(0, self.GRID_LEN-1)
+                x = np.random.randint(0, self.GRID_SIZE-1)
+                y = np.random.randint(0, self.GRID_SIZE-1)
 
                 if np.random.rand() < 0.2:
                     if np.random.rand() < 0.5:
@@ -349,16 +347,16 @@ class GridworldCtf:
 
         # Clear flag + spawning zones
         grid[0:3, 0:3] = self.OPEN_TILE
-        grid[0:3, self.GRID_LEN-3:] = self.OPEN_TILE
-        grid[self.GRID_LEN-3:, 0:3] = self.OPEN_TILE
-        grid[self.GRID_LEN-3:, self.GRID_LEN-3:] = self.OPEN_TILE
+        grid[0:3, self.GRID_SIZE-3:] = self.OPEN_TILE
+        grid[self.GRID_SIZE-3:, 0:3] = self.OPEN_TILE
+        grid[self.GRID_SIZE-3:, self.GRID_SIZE-3:] = self.OPEN_TILE
 
         # Place flags and agents
         flag_and_spawn_locations = [
             (1, 1), 
-            (1, self.GRID_LEN-2), 
-            (self.GRID_LEN-2, 1), 
-            (self.GRID_LEN-2, self.GRID_LEN-2)
+            (1, self.GRID_SIZE-2), 
+            (self.GRID_SIZE-2, 1), 
+            (self.GRID_SIZE-2, self.GRID_SIZE-2)
         ]
 
         combinations = [
@@ -549,11 +547,11 @@ class GridworldCtf:
                 curr_pos = self.movement_handler(curr_pos, up_pos, agent_idx)
         # Move down
         elif action == 1:
-            if curr_pos[0] < (self.GRID_LEN-1):
+            if curr_pos[0] < (self.GRID_SIZE-1):
                 curr_pos = self.movement_handler(curr_pos, down_pos, agent_idx)
         # Move right
         elif action == 2:
-            if curr_pos[1] < (self.GRID_LEN-1):
+            if curr_pos[1] < (self.GRID_SIZE-1):
                 curr_pos = self.movement_handler(curr_pos, right_pos, agent_idx)
         # Move left
         elif action == 3:
@@ -565,15 +563,15 @@ class GridworldCtf:
                 curr_pos = self.movement_handler(curr_pos, up_left_pos, agent_idx)
         # Move up right
         elif action == 5:
-            if curr_pos[0] > 0 and curr_pos[1] < (self.GRID_LEN-1):
+            if curr_pos[0] > 0 and curr_pos[1] < (self.GRID_SIZE-1):
                 curr_pos = self.movement_handler(curr_pos, up_right_pos, agent_idx)
         # Move down left
         elif action == 6:
-            if curr_pos[0] < (self.GRID_LEN-1) and curr_pos[1] > 0:
+            if curr_pos[0] < (self.GRID_SIZE-1) and curr_pos[1] > 0:
                 curr_pos = self.movement_handler(curr_pos, down_left_pos, agent_idx)
         # Move down right
         elif action == 7:
-            if curr_pos[0] < (self.GRID_LEN-1) and curr_pos[1] < (self.GRID_LEN-1):
+            if curr_pos[0] < (self.GRID_SIZE-1) and curr_pos[1] < (self.GRID_SIZE-1):
                 curr_pos = self.movement_handler(curr_pos, down_right_pos, agent_idx)          
 
         #----------------------------------------------------------------------------------
@@ -585,11 +583,11 @@ class GridworldCtf:
                 self.add_block(up_pos, agent_idx)
         # Add block on bottom
         elif action == 9 and self.block_inventory[agent_idx] > 0:
-            if curr_pos[0] < (self.GRID_LEN-1) and self.grid[down_pos] == self.OPEN_TILE:
+            if curr_pos[0] < (self.GRID_SIZE-1) and self.grid[down_pos] == self.OPEN_TILE:
                 self.add_block(down_pos, agent_idx)
         # Add block to right
         elif action == 10 and self.block_inventory[agent_idx] > 0:
-            if curr_pos[1] < (self.GRID_LEN-1) and self.grid[right_pos] == self.OPEN_TILE:
+            if curr_pos[1] < (self.GRID_SIZE-1) and self.grid[right_pos] == self.OPEN_TILE:
                 self.add_block(right_pos, agent_idx)
         # Add block to left
         elif action == 11 and self.block_inventory[agent_idx] > 0:
@@ -602,15 +600,15 @@ class GridworldCtf:
                 self.add_block(up_left_pos, agent_idx)
         # Add block on top right
         elif action == 13 and self.block_inventory[agent_idx] > 0:
-            if curr_pos[0] > 0 and curr_pos[1] < (self.GRID_LEN-1) and self.grid[up_right_pos] == self.OPEN_TILE:
+            if curr_pos[0] > 0 and curr_pos[1] < (self.GRID_SIZE-1) and self.grid[up_right_pos] == self.OPEN_TILE:
                 self.add_block(up_right_pos, agent_idx)
         # Add block to bottom left
         elif action == 14 and self.block_inventory[agent_idx] > 0:
-            if curr_pos[0] < (self.GRID_LEN-1) and curr_pos[1] > 0 and self.grid[down_left_pos] == self.OPEN_TILE:
+            if curr_pos[0] < (self.GRID_SIZE-1) and curr_pos[1] > 0 and self.grid[down_left_pos] == self.OPEN_TILE:
                 self.add_block(down_left_pos, agent_idx)
         # Add block to bottom right
         elif action == 15 and self.block_inventory[agent_idx] > 0:
-            if curr_pos[0] < (self.GRID_LEN-1) and curr_pos[1] < (self.GRID_LEN-1) and self.grid[down_right_pos] == self.OPEN_TILE:
+            if curr_pos[0] < (self.GRID_SIZE-1) and curr_pos[1] < (self.GRID_SIZE-1) and self.grid[down_right_pos] == self.OPEN_TILE:
                 self.add_block(down_right_pos, agent_idx)
 
         # Do nothing -> removed for now
@@ -794,11 +792,6 @@ class GridworldCtf:
         if self.STANDARDISATION_OVERRIDE:
             return self.grid
 
-        # if use_ego_state:
-        #     grid_len = self.EGO_GRID_LEN
-        # else:
-        #     grid_len = self.GRID_LEN
-
         # Copy game grid
         grid = self.grid.copy()
 
@@ -812,36 +805,37 @@ class GridworldCtf:
         grid[self.grid==self.FLAG_TILE_MAP[1-self.AGENT_TEAMS[agent_idx]]] = self.STD_OPP_FLAG_TILE
         grid[self.grid==self.FLAG_TILE_MAP[self.AGENT_TEAMS[agent_idx]]] = self.STD_OWN_FLAG_TILE
 
-        # if use_ego_state:
-        #     # Init ego grid
-        #     ego_grid = np.ones((grid_len, grid_len), dtype=np.uint8)
-
-        #     # Get agent position and calculate where to place the grid in the ego grid
-        #     agent_x, agent_y = self.agent_positions[agent_idx]
-        #     start_x = self.GRID_LEN - agent_x - 1
-        #     start_y = self.GRID_LEN - agent_y - 1
-
-        #     # Place grid inside the ego grid, centered on the agent
-        #     ego_grid[start_x:start_x+self.GRID_LEN, start_y:start_y+self.GRID_LEN] = grid
-
-        #     grid = ego_grid
-
         if use_multi_channel:
             if use_ego_state:
                 agent_x, agent_y = self.agent_positions[agent_idx]
-                multi_channel_grid = np.zeros((len(self.TILES_USED)+1, self.GRID_LEN, self.GRID_LEN), dtype=np.uint8)
+                multi_channel_grid = np.zeros((len(self.TILES_USED)+1, self.GRID_SIZE, self.GRID_SIZE), dtype=np.uint8)
                 multi_channel_grid[0, agent_x, agent_y] = 1
                 for i, tile_value in enumerate(self.TILES_USED):
                     multi_channel_grid[i+1, :, :] = np.where(grid==tile_value, 1, 0)
             else:
-                multi_channel_grid = np.zeros((len(self.TILES_USED), self.GRID_LEN, self.GRID_LEN), dtype=np.uint8)
+                multi_channel_grid = np.zeros((len(self.TILES_USED), self.GRID_SIZE, self.GRID_SIZE), dtype=np.uint8)
                 for i, tile_value in enumerate(self.TILES_USED):
                     multi_channel_grid[i, :, :] = np.where(grid==tile_value, 1, 0)
             
             grid = multi_channel_grid
 
-        return grid
+        return np.expand_dims(grid, axis=0)
 
+    def get_env_dims(self):
+        """
+        Get local and global dims.
+        """
+
+        local_grid_dims = (1, len(self.TILES_USED)+1, self.GRID_SIZE, self.GRID_SIZE)
+        global_grid_dims = (1, len(self.TILES_USED), self.GRID_SIZE, self.GRID_SIZE)
+
+        # Hardcoded as 6, as there are :
+        #   - 1 bit of information per agent for agent teams, flag indicator and hitpoints % 
+        #   - 3n bits of information for agent types (3 bits per agent, one bit per class)
+        local_metadata_dims = (1, self.N_AGENTS*6)
+        global_metadata_dims = (1, self.N_AGENTS*6 + self.N_AGENTS*self.ACTION_SPACE)
+
+        return local_grid_dims, global_grid_dims, local_metadata_dims, global_metadata_dims
 
     def display_grid(self):
         """
@@ -905,7 +899,7 @@ class GridworldCtf:
             self.has_flag,
             agent_hp), dtype=np.float16)
 
-        return local_metadata
+        return np.expand_dims(local_metadata, axis=0)
 
     def get_env_metadata_global(self, actions, use_one_hot_actions=True):
         """
@@ -927,9 +921,9 @@ class GridworldCtf:
             self.agent_types_np,
             self.has_flag,
             agent_hp,
-            actions_np), dtype=np.float16)
+            actions_np), dtype=np.float16).reshape(1, -1)
 
-        return global_metadata
+        return np.expand_dims(global_metadata, axis=0)
 
     def play(self, 
              player=0, 
@@ -977,10 +971,7 @@ class GridworldCtf:
         else:
             self.render()
 
-        if use_ego_state:
-            env_dims = self.EGO_ENV_DIMS
-        else:
-            env_dims = self.ENV_DIMS
+        env_dims = self.ENV_DIMS
 
         # Start main loop
         while True:  
