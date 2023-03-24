@@ -388,6 +388,10 @@ class PPOAgent:
                 critic_value = T.squeeze(critic_value)
                 new_probs = dist.log_prob(actions)
 
+                print(old_probs)
+                print(new_probs)
+                print(breakit)
+
                 prob_ratio = new_probs.exp() / old_probs.exp()
                 #prob_ratio = (new_probs - old_probs).exp()
                 weighted_probs = advantage[batch] * prob_ratio

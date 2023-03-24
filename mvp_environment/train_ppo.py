@@ -56,15 +56,21 @@ def train_ppo(env,
             episode_step_count += 1
 
             # Collect actions for each agent
+            grid_states = []
+            metadata_states = []
             actions = []
             probs = []
             vals = []
             for agent_idx in np.arange(env.N_AGENTS):
                 curr_metadata_state = torch.from_numpy(env.get_env_metadata(agent_idx)).reshape(1, env.METADATA_VECTOR_LEN).float().to(device)
+                
+                metadata_states.append(curr_metadata_state)
 
                 # If using the standardised states, get the agent specific states
                 curr_grid_state_ = env.standardise_state(agent_idx, use_ego_state=use_ego_state, scale_tiles=scale_tiles).reshape(*env_dims) + ut.add_noise(env_dims)
                 curr_grid_state = torch.from_numpy(curr_grid_state_).float().to(device)
+
+                grid_states.append(curr_grid_state)
 
                 #curr_grid_state = env.standardise_state(agent_idx, use_ego_state=use_ego_state, scale_tiles=scale_tiles).reshape(*env_dims) + ut.add_noise(env_dims)
 
@@ -89,8 +95,8 @@ def train_ppo(env,
             for agent_idx in np.arange(env.N_AGENTS):
                 # Append replay buffer
                 if env.AGENT_TEAMS[agent_idx]==0:
-                    agent_t1.store_memory(curr_grid_state, 
-                                        curr_metadata_state, 
+                    agent_t1.store_memory(grid_states[agent_idx], 
+                                        metadata_states[agent_idx], 
                                         actions[agent_idx], 
                                         probs[agent_idx],
                                         vals[agent_idx],
@@ -98,8 +104,8 @@ def train_ppo(env,
                                         done
                                         )
                 else:
-                    agent_t2.store_memory(curr_grid_state, 
-                                        curr_metadata_state, 
+                    agent_t2.store_memory(grid_states[agent_idx], 
+                                        metadata_states[agent_idx], 
                                         actions[agent_idx], 
                                         probs[agent_idx],
                                         vals[agent_idx],

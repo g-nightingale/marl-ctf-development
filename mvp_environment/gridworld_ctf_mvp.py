@@ -818,6 +818,9 @@ class GridworldCtf:
                     multi_channel_grid[i, :, :] = np.where(grid==tile_value, 1, 0)
             
             grid = multi_channel_grid
+        else:
+            # Need to expand dims even if we're not using multichannel
+            grid = np.expand_dims(grid, axis=0)
 
         return np.expand_dims(grid, axis=0)
 
@@ -921,7 +924,7 @@ class GridworldCtf:
             self.agent_types_np,
             self.has_flag,
             agent_hp,
-            actions_np), dtype=np.float16).reshape(1, -1)
+            actions_np), dtype=np.float16) #.reshape(1, -1)
 
         return np.expand_dims(global_metadata, axis=0)
 

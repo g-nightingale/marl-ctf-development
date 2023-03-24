@@ -317,8 +317,7 @@ class PPOAgent:
                                     fc_metadata_input_dim=critic_metadata_len,
                                     max_iterations=max_iterations,
                                     n_epochs=n_epochs,
-                                    #TODO: Temp setting alpha / 2.0
-                                    alpha=alpha/2.0)
+                                    alpha=alpha)
 
     def save_models(self):
         print('... saving models ...')
@@ -506,8 +505,8 @@ def run_timestamps(env,
             metadata_state_local = T.from_numpy(metadata_state_local_).float().to(device)
             
             # Get global and local states
-            grid_state_local_ = env.standardise_state(agent_idx, use_ego_state=True)
-            grid_state_local = T.from_numpy(grid_state_local_).float().to(device)
+            grid_state_local_ = env.standardise_state(agent_idx, use_ego_state=False)
+            grid_state_local = T.from_numpy(grid_state_local_).float().to(device) + T.randn(*grid_state_local_.shape)
 
             if env.AGENT_TEAMS[agent_idx]==0:
                 action, act_logits = agent_t1.choose_action(grid_state_local, metadata_state_local)
@@ -524,7 +523,7 @@ def run_timestamps(env,
 
         # Get global metadata state
         metadata_state_global_ = env.get_env_metadata_global(actions)
-        metadata_state_global = T.from_numpy(metadata_state_global_).float().to(device)
+        metadata_state_global = T.from_numpy(metadata_state_global_).float().to(device) + + T.randn(*metadata_state_global_.shape)
 
         for agent_idx in np.arange(env.N_AGENTS):
             # Create the global metadata state: state + actions
@@ -692,6 +691,8 @@ def main():
     #   Grid: (Batch, Channels, Height, Width)
     #   Metadata: (Batch, Length)
     local_grid_dims, global_grid_dims, local_metadata_dims, global_metadata_dims = env.get_env_dims()
+    #TODO: Temp setting local_grid_dims to global_grid_dims
+    local_grid_dims = global_grid_dims
     # print(local_grid_dims)
     # print(global_grid_dims)
     # print(local_metadata_dims)
