@@ -18,13 +18,15 @@ class GridworldCtf:
                     0: {'team':0, 'type':0},
                     1: {'team':1, 'type':0},
                 },
-                GAME_MODE='static',
+                GAME_STEPS=256,
+                RANDOMISE_FLAG_POSITIONS=False,
                 GRID_SIZE=10,
                 ENABLE_PICKUPS=False,
                 ENABLE_OBSTACLES=False,
                 DROP_FLAG_WHEN_NO_HP=False,
                 HOME_FLAG_CAPTURE=False,
-                GLOBAL_REWARDS=True,
+                USE_EASY_CAPTURE=True,
+                USE_ADJUSTED_REWARDS=False,
                 MAX_BLOCK_TILE_PCT=0.2,
                 MAX_HEALTH_PICKUP_TILES=1,
                 LOG_METRICS=True
@@ -35,13 +37,15 @@ class GridworldCtf:
         # General Config
         #----------------------------------------------------------------------------------
         self.AGENT_CONFIG = AGENT_CONFIG
-        self.GAME_MODE = GAME_MODE # static or random
+        self.GAME_STEPS = GAME_STEPS
+        self.RANDOMISE_FLAG_POSITIONS = RANDOMISE_FLAG_POSITIONS
         self.GRID_SIZE = GRID_SIZE
         self.ENV_DIMS = (1, 1, GRID_SIZE, GRID_SIZE)
         self.ENABLE_PICKUPS = ENABLE_PICKUPS
         self.ENABLE_OBSTACLES = ENABLE_OBSTACLES
         self.DROP_FLAG_WHEN_NO_HP = DROP_FLAG_WHEN_NO_HP
         self.HOME_FLAG_CAPTURE = HOME_FLAG_CAPTURE
+        self.USE_EASY_CAPTURE = USE_EASY_CAPTURE
         self.MAX_BLOCK_TILE_PCT = MAX_BLOCK_TILE_PCT
         self.N_AGENTS = len(self.AGENT_CONFIG)
         self.LOG_METRICS = LOG_METRICS
@@ -49,10 +53,11 @@ class GridworldCtf:
         self.METADATA_VECTOR_LEN = 16
         
         # Rewards
-        self.REWARD_CAPTURE = 100
-        self.REWARD_STEP = -1
-        self.WINNING_POINTS = 3
-        self.GLOBAL_REWARDS = GLOBAL_REWARDS
+        self.REWARD_WIN = 10
+        self.REWARD_CAPTURE = 1
+        self.REWARD_STEP = 0
+        self.WINNING_POINTS = np.inf
+        self.USE_ADJUSTED_REWARDS = USE_ADJUSTED_REWARDS
 
         # Block counts for constructor agents
         self.BLOCK_PICKUP_VALUE = 1
@@ -80,9 +85,9 @@ class GridworldCtf:
         # Starting positions for each agent
         self.AGENT_STARTING_POSITIONS = {
             0: (0, 2),
-            1: (GRID_SIZE-3, GRID_SIZE-1),
+            1: (GRID_SIZE-1, GRID_SIZE-3),
             2: (2, 0),
-            3: (GRID_SIZE-1, GRID_SIZE-3),
+            3: (GRID_SIZE-3, GRID_SIZE-1),
             4: (2, 2),
             5: (GRID_SIZE-3, GRID_SIZE-3),
         }
@@ -96,7 +101,7 @@ class GridworldCtf:
         # Agent hitpoints
         self.AGENT_TYPE_HP = {
             0: 5,
-            1: 3,
+            1: 4,
             2: 2
         }
 
@@ -108,10 +113,10 @@ class GridworldCtf:
         }
 
         # Probability of a successful tag for a tagging agent
-        self.TAG_PROBABILITY = 0.8
+        self.TAG_PROBABILITY = 1.0
 
         # Agent flag capture types - types that can capture the flag
-        self.AGENT_FLAG_CAPTURE_TYPES = [0, 1, 2]
+        self.AGENT_FLAG_CAPTURE_TYPES = [0] #[0, 1, 2]
 
         self.MAX_AGENT_HEALTH = 5
         self.MAX_AGENT_BLOCKS = 5
@@ -195,6 +200,13 @@ class GridworldCtf:
         # Reset the environment
         self.reset()
 
+    def load_scenario(self):
+        """
+        Load a fixed gameplay scenario.
+        """
+        #TODO
+        return None
+
     def reset(self):
         """ 
         Reset the environment. 
@@ -209,14 +221,10 @@ class GridworldCtf:
             1: [k for k, v in self.AGENT_TEAMS.items() if v==0][:agents_per_team],
         }
         
-        if self.GAME_MODE=='static':
-            self.grid = np.zeros((self.GRID_SIZE, self.GRID_SIZE), dtype=np.uint8)
-            self.init_objects()
-        elif self.GAME_MODE =='random':
-            self.generate_map()
-        else:
-            raise ValueError("Game mode must be set to either 'static' or 'random'")
+        # Generate the map
+        self.generate_map()
 
+        # Get agent positions
         self.agent_positions = {k:v for k, v in self.AGENT_STARTING_POSITIONS.items() if k < self.N_AGENTS}
 
         # Game metadata
@@ -242,16 +250,35 @@ class GridworldCtf:
 
         # Metrics dictionary
         self.metrics = {
-            "team_points": {0:0, 1:0},
-            "tag_count": {0:0, 1:0},
-            "agent_tag_count": defaultdict(int),
+            # Team level metrics
+            "team_wins": {0:0, 1:0},
+            "team_total_tag_count": {0:0, 1:0},
+            "team_respawn_tag_count": {0:0, 1:0},
+            "team_flag_captures": {0:0, 1:0},
+            "team_blocks_laid": {0:0, 1:0},
+            "team_blocks_mined": {0:0, 1:0},
+            "team_total_distance_to_own_flag": {0:0, 1:0},
+            "team_total_distance_to_opp_flag": {0:0, 1:0},
+            "team_health_pickups": {0:0, 1:0},
+            # Agent type metrics
+            "agent_type_total_tag_count": defaultdict(lambda: defaultdict(int)),
+            "agent_type_respawn_tag_count": defaultdict(lambda: defaultdict(int)),
+            "agent_type_flag_captures": defaultdict(lambda: defaultdict(int)),
+            "agent_type_blocks_laid": defaultdict(lambda: defaultdict(int)),
+            "agent_type_blocks_mined": defaultdict(lambda: defaultdict(int)),
+            "agent_type_total_distance_to_own_flag": defaultdict(lambda: defaultdict(int)),
+            "agent_type_total_distance_to_opp_flag": defaultdict(lambda: defaultdict(int)),
+            "agent_type_health_pickups": defaultdict(lambda: defaultdict(int)),
+            # Agent level metrics
+            "agent_total_tag_count": defaultdict(int),
+            "agent_respawn_tag_count": defaultdict(int),
             "agent_flag_captures": defaultdict(int),
             "agent_blocks_laid": defaultdict(int),
             "agent_blocks_mined": defaultdict(int),
             "agent_total_distance_to_own_flag": defaultdict(int),
             "agent_total_distance_to_opp_flag": defaultdict(int),
             "agent_health_pickups": defaultdict(int),
-            "agent_visitation_maps": defaultdict(lambda: np.zeros((self.GRID_SIZE, self.GRID_SIZE), dtype=np.uint8))
+            "agent_visitation_maps": defaultdict(lambda: np.zeros((self.GRID_SIZE, self.GRID_SIZE), dtype=np.uint8)),
         }
 
         # Update the visitation maps with starting positions
@@ -266,22 +293,6 @@ class GridworldCtf:
             agent_pos = self.agent_positions[agent_idx]
             self.metrics["agent_visitation_maps"][agent_idx][agent_pos[0], agent_pos[1]] += 1
 
-    def init_objects(self):
-        """"
-        Initialise the grid.
-        """
-
-        # Add agents
-        for agent_idx in range(self.N_AGENTS):
-            self.grid[self.AGENT_STARTING_POSITIONS[agent_idx]] = self.AGENT_TILE_MAP[agent_idx]
-
-        # Add flags
-        self.grid[self.FLAG_POSITIONS[0]] = self.FLAG_TILE_MAP[0]
-        self.grid[self.FLAG_POSITIONS[1]] = self.FLAG_TILE_MAP[1]
-
-        # Define spawn positions
-        self.SPAWN_POSITIONS = self.FLAG_POSITIONS.copy()
-
     def get_tiles_used(self):
         """
         Get the tiles used by the current env configuration.
@@ -293,7 +304,7 @@ class GridworldCtf:
 
         # Add block tile if obstacles are enabled
         if self.ENABLE_OBSTACLES:
-            tiles_list.extend(self.BLOCK_TILE)
+            tiles_list.append(self.BLOCK_TILE)
 
         # Add agent type tiles
         tiles_list.extend(sorted(set(self.AGENT_TILE_MAP.values())))
@@ -325,97 +336,71 @@ class GridworldCtf:
         # Initialise grid
         grid = np.zeros((self.GRID_SIZE, self.GRID_SIZE), dtype=np.uint8)
 
+        # TODO: Add this temporary block tiles
+        grid[3:5, 3:5] = self.BLOCK_TILE
+
+        # Decide flag positions zones
+        if self.RANDOMISE_FLAG_POSITIONS:
+            t1_y = np.random.choice(np.arange(1, self.GRID_SIZE-1))
+            t2_y = np.random.choice(np.arange(1, self.GRID_SIZE-1))
+
+            self.FLAG_POSITIONS[0] = (t1_y, 1)
+            self.FLAG_POSITIONS[1] = (t2_y, self.GRID_SIZE-2)
+        
+        t1_flag_pos = self.FLAG_POSITIONS[0]
+        t2_flag_pos = self.FLAG_POSITIONS[1]
+
+        # Define spawn positions
+        self.SPAWN_POSITIONS = self.FLAG_POSITIONS.copy()
+
         # Place obstacles
         if self.ENABLE_OBSTACLES:
-            while (grid==self.DESTRUCTIBLE_TILE1).sum() < self.GRID_SIZE**2 * self.MAX_BLOCK_TILE_PCT:
-                # Get random coordinates
-                x = np.random.randint(0, self.GRID_SIZE-1)
-                y = np.random.randint(0, self.GRID_SIZE-1)
+            # Set all tiles to destructible tile 1
+            grid[:, :] = self.DESTRUCTIBLE_TILE1
 
-                if np.random.rand() < 0.2:
-                    if np.random.rand() < 0.5:
-                        grid[x, y:y+3] = self.DESTRUCTIBLE_TILE1
-                    else:
-                        grid[x:x+3, y] = self.DESTRUCTIBLE_TILE1
-                elif np.random.rand() < 0.6:
-                    if np.random.rand() < 0.5:
-                        grid[x, y:y+2] = self.DESTRUCTIBLE_TILE1
-                    else:
-                        grid[x:x+2, y] = self.DESTRUCTIBLE_TILE1
+            # Clear flag + spawning zones
+            grid[t1_flag_pos[0]-1:t1_flag_pos[0]+2, t1_flag_pos[1]-1:t1_flag_pos[1]+2] = self.OPEN_TILE
+            grid[t2_flag_pos[0]-1:t2_flag_pos[0]+2, t2_flag_pos[1]-1:t2_flag_pos[1]+2] = self.OPEN_TILE
+
+            tile_removal_counter = 0
+            # Keep clearing blocks one by one
+            while (grid==self.OPEN_TILE).sum() < self.GRID_SIZE**2 * (1 - self.MAX_BLOCK_TILE_PCT):
+                tile_removal_counter += 1
+                x = np.random.randint(0, self.GRID_SIZE)
+                y = np.random.randint(0, self.GRID_SIZE)
+                grid[x, y] = self.OPEN_TILE
+
+                if tile_removal_counter > 1000:
+                    break
+
+        # Add flags
+        grid[self.FLAG_POSITIONS[0]] = self.FLAG_TILE_MAP[0]
+        grid[self.FLAG_POSITIONS[1]] = self.FLAG_TILE_MAP[1]
+
+        # Add agents
+        if self.RANDOMISE_FLAG_POSITIONS:
+            for agent_idx in range(self.N_AGENTS):
+                # Get agent team flag position - we will respawn around there
+                if self.AGENT_TEAMS[agent_idx]==0:
+                    x, y = t1_flag_pos
                 else:
-                    grid[x:x+2, y:y+2] = self.DESTRUCTIBLE_TILE1
+                    x, y = t2_flag_pos
 
-        # Clear flag + spawning zones
-        grid[0:3, 0:3] = self.OPEN_TILE
-        grid[0:3, self.GRID_SIZE-3:] = self.OPEN_TILE
-        grid[self.GRID_SIZE-3:, 0:3] = self.OPEN_TILE
-        grid[self.GRID_SIZE-3:, self.GRID_SIZE-3:] = self.OPEN_TILE
+                possible_respawn_offset = np.where(grid[max(x-1, 0):x+2, max(y-1, 0):y+2]==self.OPEN_TILE)
 
-        # Place flags and agents
-        flag_and_spawn_locations = [
-            (1, 1), 
-            (1, self.GRID_SIZE-2), 
-            (self.GRID_SIZE-2, 1), 
-            (self.GRID_SIZE-2, self.GRID_SIZE-2)
-        ]
+                # Choose a free respawn location at random
+                rnd = np.random.randint(possible_respawn_offset[0].shape[0])
+                
+                # Get respawn position: WARNING - if the flag is at (0, 0) this will break 
+                new_pos = (x + possible_respawn_offset[0][rnd] - 1, y + possible_respawn_offset[1][rnd] - 1)
 
-        combinations = [
-            [0, 1, 2, 3], 
-            [0, 1, 3, 2], 
-            [1, 0, 2, 3], 
-            [1, 0, 3, 2], 
-            [0, 2, 1, 3],
-            [0, 2, 3, 1],
-            [2, 0, 1, 3],
-            [2, 0, 3, 1]
-        ]
+                # Update tiles
+                grid[new_pos] = self.AGENT_TILE_MAP[agent_idx]
 
-        combo = np.random.choice(8)
-
-        if np.random.rand() < 0.5:
-            t1_flag = flag_and_spawn_locations[combinations[combo][0]]
-            t1_spawn = flag_and_spawn_locations[combinations[combo][1]]
-            t2_flag = flag_and_spawn_locations[combinations[combo][2]]
-            t2_spawn = flag_and_spawn_locations[combinations[combo][3]]
+                self.AGENT_STARTING_POSITIONS[agent_idx] = new_pos
         else:
-            t2_flag = flag_and_spawn_locations[combinations[combo][0]]
-            t2_spawn = flag_and_spawn_locations[combinations[combo][1]]
-            t1_flag = flag_and_spawn_locations[combinations[combo][2]]
-            t1_spawn = flag_and_spawn_locations[combinations[combo][3]]
-
-        # Update tiles
-        grid[t1_flag] = self.FLAG_TILE_MAP[0]
-        grid[t2_flag] = self.FLAG_TILE_MAP[1]
-
-        # Update positions
-        self.FLAG_POSITIONS[0] = t1_flag
-        self.FLAG_POSITIONS[1] = t2_flag 
-
-        # Update spawn positions
-        self.SPAWN_POSITIONS = {
-            0: t1_spawn,
-            1: t1_spawn
-        }
-
-        for agent_idx in range(self.N_AGENTS):
-            # Get agent team flag position - we will respawn around there
-            if self.AGENT_TEAMS[agent_idx]==0:
-                x, y = t1_spawn
-            else:
-                x, y = t2_spawn
-
-            possible_respawn_offset = np.where(grid[max(x-1, 0):x+2, max(y-1, 0):y+2]==self.OPEN_TILE)
-
-            # Choose a free respawn location at random
-            rnd = np.random.randint(possible_respawn_offset[0].shape[0])
-            
-            # Get respawn position: WARNING - if the flag is at (0, 0) this will break 
-            new_pos = (x + possible_respawn_offset[0][rnd] - 1, y + possible_respawn_offset[1][rnd] - 1)
-
-            # Update tiles
-            grid[new_pos] = self.AGENT_TILE_MAP[agent_idx]
-
-            self.AGENT_STARTING_POSITIONS[agent_idx] = new_pos
+            for agent_idx in range(self.N_AGENTS):
+                grid[self.AGENT_STARTING_POSITIONS[agent_idx]] = self.AGENT_TILE_MAP[agent_idx]
 
         self.grid = grid
 
@@ -435,17 +420,48 @@ class GridworldCtf:
             self.grid[new_pos] = self.AGENT_TILE_MAP[agent_idx]
             curr_pos = new_pos
 
+            # Easy capture movements are not mutually exclusive! 
+            if self.USE_EASY_CAPTURE is True:
+                # Move into opponent flag
+                if self.max_dim_distance_to_xy(new_pos, self.FLAG_POSITIONS[1-self.AGENT_TEAMS[agent_idx]]) <= 1 \
+                  and self.grid[self.FLAG_POSITIONS[1-self.AGENT_TEAMS[agent_idx]]]==self.FLAG_TILE_MAP[1-self.AGENT_TEAMS[agent_idx]] \
+                  and self.AGENT_TYPES[agent_idx] in self.AGENT_FLAG_CAPTURE_TYPES:
+                    self.has_flag[agent_idx] = 1
+                    self.grid[self.FLAG_POSITIONS[1-self.AGENT_TEAMS[agent_idx]]] = self.BLOCK_TILE
+
+                # Flag capture
+                if self.max_dim_distance_to_xy(new_pos, self.FLAG_POSITIONS[self.AGENT_TEAMS[agent_idx]]) <= 1 \
+                  and self.has_flag[agent_idx] == 1:
+                    # Check if own flag needs to be 'at home' to capture
+                    if (self.HOME_FLAG_CAPTURE and self.grid[self.FLAG_POSITIONS[self.AGENT_TEAMS[agent_idx]]]==self.FLAG_TILE_MAP[self.AGENT_TEAMS[agent_idx]]) \
+                      or not self.HOME_FLAG_CAPTURE:
+                        self.has_flag[agent_idx] = 0
+                        self.grid[self.FLAG_POSITIONS[1-self.AGENT_TEAMS[agent_idx]]] = self.FLAG_TILE_MAP[1-self.AGENT_TEAMS[agent_idx]]
+                        # Update metrics
+                        self.metrics['team_flag_captures'][self.AGENT_TEAMS[agent_idx]] += 1
+                        self.metrics['agent_type_flag_captures'][self.AGENT_TEAMS[agent_idx]][self.AGENT_TYPES[agent_idx]] += 1
+                        self.metrics['agent_flag_captures'][agent_idx] += 1
+                        # Check for win
+                        if self.metrics['team_wins'][self.AGENT_TEAMS[agent_idx]] == self.WINNING_POINTS:
+                            self.done = True
+                        # Update indicator
+                        self._flag_capture_current_move = True
+
         #----------------------------------------------------------------------------------
         # Movement into opponent flag
         #----------------------------------------------------------------------------------
-        elif self.grid[new_pos] == self.FLAG_TILE_MAP[1-self.AGENT_TEAMS[agent_idx]] and self.AGENT_TYPES[agent_idx] in self.AGENT_FLAG_CAPTURE_TYPES:
+        elif self.USE_EASY_CAPTURE is False \
+          and self.grid[new_pos] == self.FLAG_TILE_MAP[1-self.AGENT_TEAMS[agent_idx]] \
+          and self.AGENT_TYPES[agent_idx] in self.AGENT_FLAG_CAPTURE_TYPES:
             self.has_flag[agent_idx] = 1
             self.grid[self.FLAG_POSITIONS[1-self.AGENT_TEAMS[agent_idx]]] = self.BLOCK_TILE
 
         #----------------------------------------------------------------------------------
         # Flag capture
         #----------------------------------------------------------------------------------
-        elif new_pos == self.FLAG_POSITIONS[self.AGENT_TEAMS[agent_idx]] and self.has_flag[agent_idx] == 1:
+        elif self.USE_EASY_CAPTURE is False \
+          and new_pos == self.FLAG_POSITIONS[self.AGENT_TEAMS[agent_idx]] \
+          and self.has_flag[agent_idx] == 1:
             # Check if own flag needs to be 'at home' to capture
             if (self.HOME_FLAG_CAPTURE and self.grid[self.FLAG_POSITIONS[self.AGENT_TEAMS[agent_idx]]]==self.FLAG_TILE_MAP[self.AGENT_TEAMS[agent_idx]]) \
                or not self.HOME_FLAG_CAPTURE:
@@ -453,10 +469,11 @@ class GridworldCtf:
                 self.has_flag[agent_idx] = 0
                 self.grid[self.FLAG_POSITIONS[1-self.AGENT_TEAMS[agent_idx]]] = self.FLAG_TILE_MAP[1-self.AGENT_TEAMS[agent_idx]]
                 # Update metrics
-                self.metrics['team_points'][self.AGENT_TEAMS[agent_idx]] += 1
+                self.metrics['team_flag_captures'][self.AGENT_TEAMS[agent_idx]] += 1
+                self.metrics['agent_type_flag_captures'][self.AGENT_TEAMS[agent_idx]][self.AGENT_TYPES[agent_idx]] += 1
                 self.metrics['agent_flag_captures'][agent_idx] += 1
                 # Check for win
-                if self.metrics['team_points'][self.AGENT_TEAMS[agent_idx]] == self.WINNING_POINTS:
+                if self.metrics['team_flag_captures'][self.AGENT_TEAMS[agent_idx]] == self.WINNING_POINTS:
                     self.done = True
                 # Update indicator
                 self._flag_capture_current_move = True
@@ -464,20 +481,25 @@ class GridworldCtf:
         #----------------------------------------------------------------------------------
         # Check for tag
         #----------------------------------------------------------------------------------
-        elif new_pos in [kv[1] for kv in self.agent_positions.items() if kv[0] in self.OPPONENTS[self.AGENT_TEAMS[0]]] \
+        elif new_pos in [kv[1] for kv in self.agent_positions.items() if kv[0] in self.OPPONENTS[self.AGENT_TEAMS[agent_idx]]] \
           and self.AGENT_TYPE_DAMAGE[self.AGENT_TYPES[agent_idx]]>0: 
             if np.random.rand() < self.TAG_PROBABILITY:
                 reverse_map =  {v: k for k, v in self.agent_positions.items()}
                 opp_agent_idx = reverse_map[new_pos]
                 # Reduce opponent hit points by the amount of damage incurred by the agent type
                 self.agent_hp[opp_agent_idx] -= self.AGENT_TYPE_DAMAGE[self.AGENT_TYPES[agent_idx]]
-                # If hitpoints are zero, respawn opponent agent
-                if self.agent_hp[opp_agent_idx] <= 0:
-                    self.respawn(opp_agent_idx)
+                # If hitpoints are zero, return flag and respawn opponent agent
                 # Update metrics
-                self.metrics['tag_count'][self.AGENT_TEAMS[agent_idx]]  += 1
-                self.metrics['agent_tag_count'][agent_idx]  += 1
-
+                self.metrics['team_total_tag_count'][self.AGENT_TEAMS[agent_idx]]  += 1
+                self.metrics['agent_type_total_tag_count'][self.AGENT_TEAMS[agent_idx]][self.AGENT_TYPES[agent_idx]] += 1
+                self.metrics['agent_total_tag_count'][agent_idx]  += 1
+                if self.agent_hp[opp_agent_idx] <= 0:
+                    # Respawn opponent agent (also handles flag return)
+                    self.respawn(opp_agent_idx)
+                    self.metrics['team_respawn_tag_count'][self.AGENT_TEAMS[agent_idx]] += 1
+                    self.metrics['agent_type_respawn_tag_count'][self.AGENT_TEAMS[agent_idx]][self.AGENT_TYPES[agent_idx]] += 1
+                    self.metrics['agent_respawn_tag_count'][agent_idx]  += 1
+                    
         #----------------------------------------------------------------------------------
         # Check for pickup
         #----------------------------------------------------------------------------------
@@ -487,6 +509,8 @@ class GridworldCtf:
             if self.agent_hp[agent_idx] < self.MAX_AGENT_HEALTH:
                 self.agent_hp[agent_idx] += self.HEALTH_PICKUP_VALUE
             # Update metrics
+            self.metrics['team_health_pickups'][self.AGENT_TEAMS[agent_idx]] += 1
+            self.metrics['agent_type_health_pickups'][self.AGENT_TEAMS[agent_idx]][self.AGENT_TYPES[agent_idx]] += 1
             self.metrics['agent_health_pickups'][agent_idx] += 1
             curr_pos = new_pos
 
@@ -503,6 +527,8 @@ class GridworldCtf:
                 if self.block_inventory[agent_idx] < self.MAX_AGENT_BLOCKS:
                     self.block_inventory[agent_idx] += self.BLOCK_PICKUP_VALUE
                 # Update metrics
+                self.metrics['team_blocks_mined'][self.AGENT_TEAMS[agent_idx]] += 1
+                self.metrics['agent_type_blocks_mined'][self.AGENT_TEAMS[agent_idx]][self.AGENT_TYPES[agent_idx]] += 1
                 self.metrics['agent_blocks_mined'][agent_idx] += 1
 
         return curr_pos
@@ -513,8 +539,23 @@ class GridworldCtf:
         """
         self.grid[pos] = self.DESTRUCTIBLE_TILE1
         self.block_inventory[agent_idx] -= 1
+        # Update metrics
+        self.metrics['team_blocks_laid'][self.AGENT_TEAMS[agent_idx]] += 1
+        self.metrics['agent_type_blocks_laid'][self.AGENT_TEAMS[agent_idx]][self.AGENT_TYPES[agent_idx]] += 1
         self.metrics['agent_blocks_laid'][agent_idx] += 1
 
+    def get_reversed_action(self, action):
+        """
+        Get reversed action for opponent.
+        """
+
+        if action % 2 == 0:
+            reversed_action = action + 1
+        else:
+            reversed_action = action - 1
+           
+        return reversed_action
+    
     def act(self, agent_idx, action) -> None:
         """
         Take agent actions and update grid.
@@ -655,6 +696,14 @@ class GridworldCtf:
         distances = np.abs(np.array([x, y]) - np.array([object_xy[0], object_xy[1]]))
         return max(distances)
 
+    def max_dim_distance_to_xy(self, xy, target_xy):
+        """
+        Returns maximum dimension distance between two points on a grid.
+        """
+        
+        distances = np.abs(np.array([xy[0], xy[1]]) - np.array([target_xy[0], target_xy[1]]))
+        return max(distances)
+    
     def get_tile_pos_within_one_cell(self, agent_idx, object_tile):
         """
         Returns all positions of a specified tile within one cell of an agent.
@@ -749,11 +798,18 @@ class GridworldCtf:
             #----------------------------------------------------------------------------------
             # Logging extra metrics
             #----------------------------------------------------------------------------------
-            self.metrics['agent_total_distance_to_own_flag'][agent_idx] += self.agent_distance_to_xy(agent_idx, self.CAPTURE_POSITIONS[agent_team])
-            self.metrics['agent_total_distance_to_opp_flag'][agent_idx] += self.agent_distance_to_xy(agent_idx, self.CAPTURE_POSITIONS[1-agent_team])
+            distance_to_own_flag = self.agent_distance_to_xy(agent_idx, self.CAPTURE_POSITIONS[agent_team])
+            distance_to_opp_flag = self.agent_distance_to_xy(agent_idx, self.CAPTURE_POSITIONS[1 - agent_team])
 
-        if self.GLOBAL_REWARDS:
-            rewards = self.get_global_rewards(rewards)
+            self.metrics['team_total_distance_to_own_flag'][self.AGENT_TEAMS[agent_idx]] += distance_to_own_flag
+            self.metrics['team_total_distance_to_opp_flag'][self.AGENT_TEAMS[agent_idx]] += distance_to_opp_flag
+            self.metrics['agent_type_total_distance_to_own_flag'][self.AGENT_TEAMS[agent_idx]][self.AGENT_TYPES[agent_idx]] += distance_to_own_flag
+            self.metrics['agent_type_total_distance_to_opp_flag'][self.AGENT_TEAMS[agent_idx]][self.AGENT_TYPES[agent_idx]] += distance_to_opp_flag
+            self.metrics['agent_total_distance_to_own_flag'][agent_idx] += distance_to_own_flag
+            self.metrics['agent_total_distance_to_opp_flag'][agent_idx] += distance_to_opp_flag
+            
+        if self.USE_ADJUSTED_REWARDS:
+            rewards = self.get_adjusted_rewards(rewards)
 
         # Update the visitation maps with new positions
         self.update_visitation_map()
@@ -762,7 +818,32 @@ class GridworldCtf:
         if self.ENABLE_PICKUPS:
             self.spawn_health_tiles()
 
+        # Check for end game state
+        if self.env_step_count == self.GAME_STEPS:
+            self.done = True
+            rewards = self.get_terminal_rewards(rewards)
+
         return self.grid, rewards, self.done
+
+    def get_terminal_rewards(self, rewards, penalise_losing_team=True):
+        """
+        Get terminal rewards for each team.
+        """
+        # Find the winning team
+        winning_team = -1
+        if self.metrics['team_flag_captures'][0] > self.metrics['team_flag_captures'][1]:
+            winning_team = 0
+        elif self.metrics['team_flag_captures'][0] < self.metrics['team_flag_captures'][1]:
+            winning_team = 1
+
+        # Add winning points to agent rewards
+        for agent_idx in range(self.N_AGENTS):
+            if self.AGENT_TEAMS[agent_idx] == winning_team:
+                rewards[agent_idx] += self.REWARD_WIN
+            elif penalise_losing_team:
+                rewards[agent_idx] -= self.REWARD_WIN
+
+        return rewards
 
     def get_global_rewards(self, rewards):
         """
@@ -778,9 +859,26 @@ class GridworldCtf:
                 team_rewards[1 - self.AGENT_TEAMS[i]] -= (rewards[i] - 1)
 
         return [team_rewards[self.AGENT_TEAMS[i]] for i in range(self.N_AGENTS)]
+    
+    def get_adjusted_rewards(self, rewards):
+        """
+        Adjust rewards.
+        """
+
+        # First get the total rewards for each team
+        team_rewards = {0:0, 1:0}
+        for i in range(self.N_AGENTS):
+            # Sum team rewards
+            team_rewards[self.AGENT_TEAMS[i]] += rewards[i]
+
+        # Now adjust the rewards for each agent by subtracting opponent rewards
+        for i in range(self.N_AGENTS):
+            rewards[i] -= team_rewards[1 - self.AGENT_TEAMS[i]]
+            
+        return rewards
             
 
-    def standardise_state(self, agent_idx, use_ego_state=False, use_multi_channel=True):
+    def standardise_state(self, agent_idx, use_ego_state=False, use_multi_channel=True, reverse_grid=False):
         """
         Standardises the environment state:
             1) Tiles are standardised to look the same for each team.
@@ -804,7 +902,7 @@ class GridworldCtf:
 
         grid[self.grid==self.FLAG_TILE_MAP[1-self.AGENT_TEAMS[agent_idx]]] = self.STD_OPP_FLAG_TILE
         grid[self.grid==self.FLAG_TILE_MAP[self.AGENT_TEAMS[agent_idx]]] = self.STD_OWN_FLAG_TILE
-
+        
         if use_multi_channel:
             if use_ego_state:
                 agent_x, agent_y = self.agent_positions[agent_idx]
@@ -822,6 +920,9 @@ class GridworldCtf:
             # Need to expand dims even if we're not using multichannel
             grid = np.expand_dims(grid, axis=0)
 
+        if reverse_grid:
+            grid = np.array([np.flip(grid[i, :, :]) for i in range(grid.shape[0])])
+
         return np.expand_dims(grid, axis=0)
 
     def get_env_dims(self):
@@ -829,14 +930,14 @@ class GridworldCtf:
         Get local and global dims.
         """
 
-        local_grid_dims = (1, len(self.TILES_USED)+1, self.GRID_SIZE, self.GRID_SIZE)
-        global_grid_dims = (1, len(self.TILES_USED), self.GRID_SIZE, self.GRID_SIZE)
+        local_grid_dims = (len(self.TILES_USED)+1, self.GRID_SIZE, self.GRID_SIZE)
+        global_grid_dims = (len(self.TILES_USED), self.GRID_SIZE, self.GRID_SIZE)
 
         # Hardcoded as 6, as there are :
         #   - 1 bit of information per agent for agent teams, flag indicator and hitpoints % 
         #   - 3n bits of information for agent types (3 bits per agent, one bit per class)
-        local_metadata_dims = (1, self.N_AGENTS*6)
-        global_metadata_dims = (1, self.N_AGENTS*6 + self.N_AGENTS*self.ACTION_SPACE)
+        local_metadata_dims = (self.N_AGENTS*2 + 5, )
+        global_metadata_dims = (self.N_AGENTS*6 + self.N_AGENTS*self.ACTION_SPACE + 3, )
 
         return local_grid_dims, global_grid_dims, local_metadata_dims, global_metadata_dims
 
@@ -888,27 +989,83 @@ class GridworldCtf:
         if (sleep_time > 0) :
             time.sleep(sleep_time)
 
-    def get_env_metadata_local(self, agent_idx):
+    def get_env_metadata_local_old(self):
         """
         Return local metadata from the environment.
         """
 
+        EPSILON = 1e-6
+        percent_complete_np = np.array([self.env_step_count / self.GAME_STEPS])
+
+        scores = np.array([v for v in self.metrics['team_flag_captures'].values()])
+        teams_max_score_pct_np = (scores + EPSILON) / (max(scores) + EPSILON) 
         agent_hp = np.array([self.agent_hp[kv[1]]/self.AGENT_TYPE_HP[self.AGENT_TYPES[i]] \
             for i, kv in enumerate(self.AGENT_TYPES.items())], dtype=np.uint8)
       
         local_metadata = np.concatenate((
+            percent_complete_np,
+            teams_max_score_pct_np,
             self.agent_teams_np,
             self.agent_types_np,
             self.has_flag,
             agent_hp), dtype=np.float16)
 
         return np.expand_dims(local_metadata, axis=0)
+    
+    def get_env_metadata_local(self, agent_idx):
+        """
+        Return local metadata from the environment.
+        """
 
+        EPSILON = 1e-6
+
+        # Get game state data
+        game_percent_complete = self.env_step_count / self.GAME_STEPS
+        scores = np.array([v for v in self.metrics['team_flag_captures'].values()])
+        teams_max_score_pct_np = (self.metrics['team_flag_captures'][self.AGENT_TEAMS[agent_idx]] + EPSILON) / (max(scores) + EPSILON) 
+
+        # Get agent hitpoints
+        agent_hp = np.array([self.agent_hp[kv[1]]/self.AGENT_TYPE_HP[self.AGENT_TYPES[i]] \
+            for i, kv in enumerate(self.AGENT_TYPES.items())], dtype=np.uint8)
+        
+        # Populate array
+        metadata_state = np.zeros(5 + self.N_AGENTS*2, dtype=np.float16)
+        metadata_state[0] = game_percent_complete
+        metadata_state[1] = teams_max_score_pct_np
+        metadata_state[2 + self.AGENT_TYPES[agent_idx]] = 1.0
+
+        # Agent specific data
+        metadata_state[5] = agent_hp[agent_idx]
+        metadata_state[6] = self.has_flag[agent_idx]
+
+        idx = 7
+        # Get team data
+        for teammate_idx in self.OPPONENTS[1-self.AGENT_TEAMS[agent_idx]]:
+            if teammate_idx != agent_idx:
+                metadata_state[idx] = agent_hp[teammate_idx]
+                idx += 1
+                metadata_state[idx] = self.has_flag[agent_idx]
+                idx += 1
+
+        # Get opponent data
+        for opponent_idx in self.OPPONENTS[self.AGENT_TEAMS[agent_idx]]:
+                metadata_state[idx] = agent_hp[opponent_idx]
+                idx += 1
+                metadata_state[idx] = self.has_flag[opponent_idx]
+                idx += 1
+
+        return np.expand_dims(metadata_state, axis=0)
+    
     def get_env_metadata_global(self, actions, use_one_hot_actions=True):
         """
         Return global metadata from the environment.
         """
 
+        EPSILON = 1e-6
+        percent_complete_np = np.array([self.env_step_count / self.GAME_STEPS])
+
+        scores = np.array([v for v in self.metrics['team_flag_captures'].values()])
+        teams_max_score_pct_np = (scores + EPSILON) / (max(scores) + EPSILON) 
         agent_hp = np.array([self.agent_hp[kv[1]]/self.AGENT_TYPE_HP[self.AGENT_TYPES[i]] \
             for i, kv in enumerate(self.AGENT_TYPES.items())], dtype=np.uint8)
 
@@ -920,6 +1077,8 @@ class GridworldCtf:
             actions_np = np.array(actions, dtype=np.uint8)
 
         global_metadata = np.concatenate((
+            percent_complete_np,
+            teams_max_score_pct_np,
             self.agent_teams_np,
             self.agent_types_np,
             self.has_flag,
