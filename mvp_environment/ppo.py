@@ -13,8 +13,8 @@ from torch.distributions.categorical import Categorical
 # from torch.utils.tensorboard import SummaryWriter
 import matplotlib.pyplot as plt
 from IPython.display import clear_output
-import multiprocessing as mp
 import wandb
+import ray
 
 def layer_init(layer, std=np.sqrt(2), bias_const=0.0):
     torch.nn.init.orthogonal_(layer.weight, std)
@@ -47,6 +47,7 @@ class PPOTrainer:
         rollout_grid_states = torch.zeros((self.num_steps, ) + self.grid_dims).to(self.device)
         rollout_metadata_states = torch.zeros((self.num_steps, ) + self.metadata_dims).to(self.device)
         rollout_actions = torch.zeros((self.num_steps, )).to(self.device)
+        rollout_use_action_mask = torch.zeros((self.num_steps, )).to(self.device)
         rollout_logprobs = torch.zeros((self.num_steps, )).to(self.device)
         rollout_rewards = torch.zeros((self.num_steps, )).to(self.device)
         rollout_dones = torch.zeros((self.num_steps, )).to(self.device)
@@ -56,34 +57,41 @@ class PPOTrainer:
         env.reset()
 
         for step in range(0, self.num_steps, self.num_agents_per_team):
-            self.global_step += 1 * self.args.num_envs
-
             # Init actions list to feed into environment
             actions_list = []
 
-            # ALGO LOGIC: action logic
             with torch.no_grad():
                 
                 agent_offset = 0
                 for agent_idx in np.arange(env.N_AGENTS):
-                    if env.AGENT_TEAMS[agent_idx]==0:
-                        grid_state = torch.tensor(env.standardise_state(agent_idx, use_ego_state=self.args.use_ego_state), dtype=torch.float32).to(self.device)
-                        metadata_state = torch.tensor(env.get_env_metadata_local(agent_idx), dtype=torch.float32).to(self.device)
-                        action, logprob, _, value = agent.get_action_and_value(grid_state, metadata_state)
+                    if env.AGENT_TEAMS[agent_idx]==self.team_to_train:
+                        use_action_mask = torch.tensor(env.AGENT_TYPE_ACTION_MASK[env.AGENT_TYPES[agent_idx]], dtype=torch.float32).to(self.device)
+                        grid_state = torch.tensor(env.standardise_state(agent_idx, reverse_grid=self.reverse_grid), dtype=torch.float32).to(self.device)
+                        metadata_state = torch.tensor(env.get_env_metadata(agent_idx), dtype=torch.float32).to(self.device)
+                        action, logprob, _, value = agent.get_action_and_value(grid_state, metadata_state, use_action_mask)
 
                         # Collect values, actions and logprobs for agent (and not opponent)
                         rollout_grid_states[step + agent_offset] = grid_state
                         rollout_metadata_states[step + agent_offset] = metadata_state
                         rollout_values[step + agent_offset] = value.flatten()
                         rollout_actions[step + agent_offset] = action
+                        rollout_use_action_mask[step + agent_offset] = use_action_mask
                         rollout_logprobs[step + agent_offset] = logprob
+                        if self.reverse_grid:
+                            action = env.get_reversed_action(action.item())
+                        else:
+                            action = action.item()
                         agent_offset += 1
                     else:
-                        grid_state = torch.tensor(env.standardise_state(agent_idx, use_ego_state=self.args.use_ego_state, reverse_grid=True), dtype=torch.float32).to(self.device)
-                        metadata_state = torch.tensor(env.get_env_metadata_local(agent_idx), dtype=torch.float32).to(self.device)
-                        action, _, _, _ = opponent.get_action_and_value(grid_state, metadata_state)
-                        action = env.get_reversed_action(action)
-                    
+                        use_action_mask = torch.tensor(env.AGENT_TYPE_ACTION_MASK[env.AGENT_TYPES[agent_idx]], dtype=torch.float32).to(self.device)
+                        grid_state = torch.tensor(env.standardise_state(agent_idx, reverse_grid=not self.reverse_grid), dtype=torch.float32).to(self.device)
+                        metadata_state = torch.tensor(env.get_env_metadata(agent_idx), dtype=torch.float32).to(self.device)
+                        action, _, _, _ = opponent.get_action_and_value(grid_state, metadata_state, use_action_mask)
+                        if not self.reverse_grid:
+                            action = env.get_reversed_action(action.item())
+                        else:
+                            action = action.item()
+
                     actions_list.append(action)
 
             # Step the environment
@@ -96,7 +104,7 @@ class PPOTrainer:
             # Store rewards and global metadata
             agent_offset = 0
             for agent_idx in np.arange(env.N_AGENTS):
-                if env.AGENT_TEAMS[agent_idx]==0:
+                if env.AGENT_TEAMS[agent_idx]==self.team_to_train:
                     rollout_rewards[step + agent_offset] = torch.tensor([reward[agent_idx]]).to(self.device).view(-1)
                     agent_offset += 1
             
@@ -106,13 +114,14 @@ class PPOTrainer:
                 self.max_rewards = rollout_rewards.sum().item()
 
         # Use the first agent in team 1 for the next states
-        first_t1_agent_idx = 0
-        next_grid_state = torch.tensor(env.standardise_state(first_t1_agent_idx, use_ego_state=self.args.use_ego_state), dtype=torch.float32).to(self.device)
-        next_metadata_state = torch.tensor(env.get_env_metadata_local(first_t1_agent_idx), dtype=torch.float32).to(self.device)
+        first_agent_idx = min([k for k, v in env.AGENT_TEAMS.items() if v==self.team_to_train])
+        next_grid_state = torch.tensor(env.standardise_state(first_agent_idx, reverse_grid=self.reverse_grid), dtype=torch.float32).to(self.device)
+        next_metadata_state = torch.tensor(env.get_env_metadata(first_agent_idx), dtype=torch.float32).to(self.device)
 
         return rollout_grid_states, \
                 rollout_metadata_states, \
                 rollout_actions, \
+                rollout_use_action_mask, \
                 rollout_logprobs, \
                 rollout_rewards, \
                 rollout_dones, \
@@ -120,23 +129,6 @@ class PPOTrainer:
                 next_grid_state, \
                 next_metadata_state, \
                 next_done
-    
-    def get_multiple_rollouts(self,env, agent, opponent):
-        """
-        Calculate multiple rollouts.
-        """
-        with mp.Pool(processes=self.args.num_envs) as pool:
-            async_results = []
-
-            # Use apply_async to run the 'get_rollout' method in parallel
-            for _ in range(self.args.num_envs):
-                async_result = pool.apply_async(self.get_single_rollout, (env, agent, opponent))
-                async_results.append(async_result)
-
-            # Collect the results
-            results = [async_result.get() for async_result in async_results]
-
-        return results
     
     def calculate_advantages(self, 
                              agent,
@@ -185,6 +177,7 @@ class PPOTrainer:
                  b_metadata_states,
                  b_logprobs,
                  b_actions,
+                 b_use_action_mask,
                  b_advantages,
                  b_returns,
                  b_values
@@ -192,15 +185,15 @@ class PPOTrainer:
         """
         Optimise.
         """
-        b_inds = np.arange(self.args.batch_size)
+        b_inds = np.arange(self.batch_size)
         clipfracs = []
         for epoch in range(self.args.update_epochs):
             np.random.shuffle(b_inds)
-            for start in range(0, self.args.batch_size, self.args.minibatch_size):
-                end = start + self.args.minibatch_size
+            for start in range(0, self.batch_size, self.minibatch_size):
+                end = start + self.minibatch_size
                 mb_inds = b_inds[start:end]
 
-                _, newlogprob, entropy, newvalue = agent.get_action_and_value(b_grid_states[mb_inds], b_metadata_states[mb_inds], b_actions.long()[mb_inds])
+                _, newlogprob, entropy, newvalue = agent.get_action_and_value(b_grid_states[mb_inds], b_metadata_states[mb_inds], b_use_action_mask[mb_inds], b_actions.long()[mb_inds], )
                 logratio = newlogprob - b_logprobs[mb_inds]
                 ratio = logratio.exp()
 
@@ -247,8 +240,14 @@ class PPOTrainer:
                     break
 
         return v_loss.item(), pg_loss.item(), entropy_loss.item()
+    
+    def get_random_opponent(self, opponents):
+        """
+        Get a random opponent from a list of opponents.
+        """
+        return np.random.choice(opponents)
 
-    def train_ppo(self, args, env, agent, opponent, verbose=True):
+    def train_ppo(self, args, env, agent, opponent, train_team1=True, verbose=True):
         run_name = "Run"
 
         if self.args.use_wandb_ppo:
@@ -262,23 +261,43 @@ class PPOTrainer:
                 save_code=True,
             )
 
+        @ray.remote
+        def ray_rollout(env, agent, opponent):
+            return self.get_single_rollout(env, agent, opponent)
+    
         # TODO: Move this into trainer script
-        random.seed(self.args.seed)
-        np.random.seed(self.args.seed)
-        torch.manual_seed(self.args.seed)
-        torch.backends.cudnn.deterministic = self.args.torch_deterministic
+        # random.seed(self.args.seed)
+        # np.random.seed(self.args.seed)
+        # torch.manual_seed(self.args.seed)
+        # torch.backends.cudnn.deterministic = self.args.torch_deterministic
 
-        # Testing if agent can be modified from training class
+        if train_team1:
+            self.reverse_grid = False
+            self.team_to_train = 0
+        else:
+            self.reverse_grid = True
+            self.team_to_train = 1
+
         self.device = torch.device("cuda" if torch.cuda.is_available() and self.args.cuda else "cpu")
         self.optimizer = optim.Adam(agent.parameters(), lr=self.args.learning_rate, eps=1e-5)
 
+        # Note that because each agent in the team moves once per timestep, we need to multiply the
+        # number of steps by the number of agents in the team
         self.num_agents_per_team = env.N_AGENTS // 2
         self.num_steps = self.args.num_steps * self.num_agents_per_team
-        
-        # ALGO Logic: Storage setup
+        self.batch_size = int(self.args.num_envs * self.args.num_steps * self.num_agents_per_team)
+        self.minibatch_size = int(self.batch_size // self.args.num_minibatches)
+        # num_updates = (self.args.total_timesteps * self.num_agents_per_team) // self.batch_size
+        num_updates = (self.args.total_timesteps * self.num_agents_per_team) // int(self.args.num_steps * self.num_agents_per_team)
+
+        print(f'Batch size: {self.batch_size}')
+        print(f'Minibatch size: {self.minibatch_size}')
+
+        # Init arrays
         grid_states = torch.zeros((self.num_steps, self.args.num_envs) + self.grid_dims).to(self.device)
         metadata_states = torch.zeros((self.num_steps, self.args.num_envs) + self.metadata_dims).to(self.device)
         actions = torch.zeros((self.num_steps, self.args.num_envs)).to(self.device)
+        use_action_mask = torch.zeros((self.num_steps, self.args.num_envs)).to(self.device)
         logprobs = torch.zeros((self.num_steps, self.args.num_envs)).to(self.device)
         rewards = torch.zeros((self.num_steps, self.args.num_envs)).to(self.device)
         dones = torch.zeros((self.num_steps, self.args.num_envs)).to(self.device)
@@ -287,8 +306,7 @@ class PPOTrainer:
         # TRY NOT TO MODIFY: start the game
         self.global_step = 0
         start_time = time.time()
-        num_updates = self.args.total_timesteps // self.args.batch_size
-
+        
         self.max_rewards = -np.inf
         total_rewards = []
 
@@ -296,6 +314,8 @@ class PPOTrainer:
         # Training Loop Start
         #----------------------------------------------------------------------
         for update in range(1, num_updates + 1):
+            self.global_step += (self.args.num_envs * self.args.num_steps)
+            
             # Annealing the rate if instructed to do so.
             if self.args.anneal_lr:
                 frac = 1.0 - (update - 1.0) / num_updates
@@ -306,52 +326,79 @@ class PPOTrainer:
             # Get rollout
             #----------------------------------------------------------------------
             if self.args.num_envs == 1:
+                # opponent = self.get_random_opponent(opponents)
 
+                # Get rollout data
                 rollout_data = self.get_single_rollout(env, agent, opponent)
                 
                 # Load rollout data into global arrays
                 grid_states[:, 0, :, :, :] = rollout_data[0]
                 metadata_states[:, 0, :] = rollout_data[1]
                 actions[:, 0] = rollout_data[2]
-                logprobs[:, 0] = rollout_data[3]
-                rewards[:, 0] = rollout_data[4]
-                dones[:, 0] = rollout_data[5]
-                values[:, 0] = rollout_data[6]
-                next_grid_state = rollout_data[7]
-                next_metadata_state = rollout_data[8]
-                next_done = rollout_data[9]
+                use_action_mask[:, 0] = rollout_data[3]
+                logprobs[:, 0] = rollout_data[4]
+                rewards[:, 0] = rollout_data[5]
+                dones[:, 0] = rollout_data[6]
+                values[:, 0] = rollout_data[7]
+                next_grid_state = rollout_data[8]
+                next_metadata_state = rollout_data[9]
+                next_done = rollout_data[10]
 
             elif self.args.num_envs > 1:
                 if self.args.parallel_rollouts:
-                    rollout_data_multiple = self.get_multiple_rollouts(env, agent, opponent)
+                    async_results = []
+
+                    # Use apply_async to run the 'get_rollout' method in parallel
+                    for _ in range(self.args.num_envs):
+                        # opponent = self.get_random_opponent(opponents)
+                        async_result = ray_rollout.remote(env, agent, opponent)
+                        async_results.append(async_result)
+
+                    # Collect the results
+                    rollout_data_multiple = ray.get(async_results)
 
                     for r_idx, rollout_data in enumerate(rollout_data_multiple):
                         grid_states[:, r_idx, :, :, :] = rollout_data[0]
                         metadata_states[:, r_idx, :] = rollout_data[1]
                         actions[:, r_idx] = rollout_data[2]
-                        logprobs[:, r_idx] = rollout_data[3]
-                        rewards[:, r_idx] = rollout_data[4]
-                        dones[:, r_idx] = rollout_data[5]
-                        values[:, r_idx] = rollout_data[6]
-                        next_grid_state = rollout_data[7]
-                        next_metadata_state = rollout_data[8]
-                        next_done = rollout_data[9]
+                        use_action_mask[:, r_idx] = rollout_data[3]
+                        logprobs[:, r_idx] = rollout_data[4]
+                        rewards[:, r_idx] = rollout_data[5]
+                        dones[:, r_idx] = rollout_data[6]
+                        values[:, r_idx] = rollout_data[7]
+                        next_grid_state = rollout_data[8]
+                        next_metadata_state = rollout_data[9]
+                        next_done = rollout_data[10]
+
+                        # Update max rewards
+                        if rollout_data[5].sum().item() > self.max_rewards:
+                            self.max_rewards = rollout_data[5].sum().item()
 
                 else:
                     for r_idx in range(self.args.num_envs):
+                        # Randomly select opponent
+                        # opponent = self.get_random_opponent(opponents)
+                        
+                        # Get rollout data
                         rollout_data = self.get_single_rollout(env, agent, opponent)
+                        
+                        # Populate arrays
                         grid_states[:, r_idx, :, :, :] = rollout_data[0]
                         metadata_states[:, r_idx, :] = rollout_data[1]
                         actions[:, r_idx] = rollout_data[2]
-                        logprobs[:, r_idx] = rollout_data[3]
-                        rewards[:, r_idx] = rollout_data[4]
-                        dones[:, r_idx] = rollout_data[5]
-                        values[:, r_idx] = rollout_data[6]
-                        next_grid_state = rollout_data[7]
-                        next_metadata_state = rollout_data[8]
-                        next_done = rollout_data[9]
+                        use_action_mask[:, r_idx] = rollout_data[3]
+                        logprobs[:, r_idx] = rollout_data[4]
+                        rewards[:, r_idx] = rollout_data[5]
+                        dones[:, r_idx] = rollout_data[6]
+                        values[:, r_idx] = rollout_data[7]
+                        next_grid_state = rollout_data[8]
+                        next_metadata_state = rollout_data[9]
+                        next_done = rollout_data[10]
 
-           
+                        # Update max rewards
+                        if rollout_data[5].sum().item() > self.max_rewards:
+                            self.max_rewards = rollout_data[5].sum().item()
+
             #----------------------------------------------------------------------
             # Calculate Advantages
             #----------------------------------------------------------------------
@@ -372,10 +419,13 @@ class PPOTrainer:
             b_metadata_states = metadata_states.reshape((-1,) + self.metadata_dims)
             b_logprobs = logprobs.reshape(-1)
             b_actions = actions.reshape(-1,)
+            b_use_action_mask = use_action_mask.reshape(-1,)
             b_advantages = advantages.reshape(-1)
             b_returns = returns.reshape(-1)
             b_values = values.reshape(-1)
 
+            assert((self.args.num_envs * self.args.num_steps) == (b_grid_states.shape[0] // self.num_agents_per_team))
+            
             # Check shapes
             # print('obs:', obs.shape, b_obs.shape)
             # print('obs2:', obs2.shape, b_obs2.shape)
@@ -391,6 +441,7 @@ class PPOTrainer:
                                                             b_metadata_states,
                                                             b_logprobs,
                                                             b_actions,
+                                                            b_use_action_mask,
                                                             b_advantages,
                                                             b_returns,
                                                             b_values)
@@ -402,14 +453,13 @@ class PPOTrainer:
             var_y = np.var(y_true)
             explained_var = np.nan if var_y == 0 else 1 - np.var(y_true - y_pred) / var_y
 
-            total_rewards.append(rewards.sum())
-            average_rewards = round(np.mean(total_rewards[-50:]), 2)
+            total_rewards.append(rewards.sum().item()/self.args.num_envs)
+            average_rewards = round(np.mean(total_rewards[-5:]), 2)
 
-            # TRY NOT TO MODIFY: record rewards for plotting purposes
-            # clear_output()
             if verbose:
-                print(f'i: {update}\t', 
-                        f'ar: {"{:0.4f}".format(average_rewards)}\t',
+                print(f'i: {update}\t',
+                        f'steps: {self.global_step}\t',  
+                        f'ar: {average_rewards:.2f}\t',
                         f'mx: {self.max_rewards}\t', 
                         f'lr: {round(self.optimizer.param_groups[0]["lr"], 6)}\t', 
                         f'vl: {round(v_loss, 4)}\t',
@@ -426,3 +476,4 @@ class PPOTrainer:
             # print("SPS:", int(global_step / (time.time() - start_time)))
             # writer.add_scalar("charts/SPS", int(global_step / (time.time() - start_time)), global_step)
         print('Complete')
+        return total_rewards

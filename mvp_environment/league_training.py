@@ -1,244 +1,782 @@
 import numpy as np
-import torch
+from collections import defaultdict
 from IPython.display import clear_output
 import wandb
-from gridworld_ctf_mvp import GridworldCtf
+from gridworld_ctf import GridworldCtf
 from agent_network import Agent
 from ppo import PPOTrainer
 from metrics_logger import MetricsLogger
+import time
+import ray
+import copy
+import os
+import pickle
+from utils import duel
+
+@ray.remote
+def ray_duel(env, agent, opponent, idxs, return_result):
+    return duel(env, agent, opponent, idxs, return_result)
+
+class TimeCapsule:
+    def __init__(self,
+                 args,
+                 symmetric_teams,
+                 agent_types,
+                 agent_teams,
+                 all_agents_t1,
+                 all_agents_t2,
+                 metlog,
+                 winrate_matrices):
+        self.args = args
+        self.symmetric_teams = symmetric_teams
+        self.agent_types = agent_types
+        self.agent_teams = agent_teams
+        self.all_agents_t1 = all_agents_t1
+        self.all_agents_t2 = all_agents_t2
+        self.metlog = metlog
+        self.winrate_matrices = winrate_matrices
 
 class LeagueTrainer:
     def __init__(self, args):
         self.args = args
-        self.rng = np.random.default_rng(args.seed)
-        self.opponent_selection_weights = (0.5, 0.3, 0.2)
-
+        # self.rng = np.random.default_rng(args.seed)
+        self.rng = np.random.default_rng()
+        self.opponent_selection_weights = {
+             'main': (0.3, 0.3, 0.2, 0.2),
+             'coach': (1.0, 0.0, 0.0, 0.0),
+             'league': (0.34, 0.0, 0.33, 0.33)
+        }
+        self.winrate_matrices = []
         self._init_objects()
 
+        CWD = os.getcwd()
+        RESULTS_FOLDER_NAME = 'runs'
+        self.OUTPUT_FOLDER_NAME = CWD + '/' + RESULTS_FOLDER_NAME + '/' + args.exp_name
+
+        self.TIME_CAPSULE_FILE_NAME = 'time_capsule'
+        self.FILE_EXT = '.bin'
+
     def _init_objects(self):
-        # Initialise environment
+        #----------------------------------------------------------------------
+        # Initialise environment and get dimensions
+        #----------------------------------------------------------------------
         self.env = GridworldCtf(**self.args.env_config)
         
         dims_data = self.env.get_env_dims()
-        local_grid_dims = dims_data[0]
+        self.local_grid_dims = dims_data[0]
         global_grid_dims = dims_data[1]
-        local_metadata_dims = dims_data[2]
+        self.local_metadata_dims = dims_data[2]
         global_metadata_dims = dims_data[3]
-        n_channels = local_grid_dims[0]
+        self.n_channels = self.local_grid_dims[0]
 
-        self.ppotrainer = PPOTrainer(self.args, local_grid_dims, local_metadata_dims)
-        # Setup metrics logger
-        self.metlog = MetricsLogger(self.args.n_main_agents)
+        # Check if teams are symmetrical
+        self.symmetric_teams = sorted([v for k, v in self.env.AGENT_TYPES.items() if self.env.AGENT_TEAMS[k] == 0]) == sorted([v for k, v in self.env.AGENT_TYPES.items() if self.env.AGENT_TEAMS[k] == 1])
+
+        if self.args.n_coaching_agents == 0 and self.args.n_league_agents == 0:
+            self.opponent_selection_weights['main'] = (1.0, 0.0, 0.0, 0.0)
+
+        # Create agent team types
+        self.agent_team_types = defaultdict(list)
+        for k, v in self.env.AGENT_TYPES.items():
+            self.agent_team_types[self.env.AGENT_TEAMS[k]].append(v)
+
+        #----------------------------------------------------------------------
+        # Instantiate ppo trainer and metrics logger
+        #----------------------------------------------------------------------
+        self.ppotrainer = PPOTrainer(self.args, 
+                                    self.local_grid_dims, 
+                                    self.local_metadata_dims)
+        
+        self.metlog = MetricsLogger(self.args.n_main_agents,
+                                    self.args.n_coaching_agents,
+                                    self.args.n_league_agents,
+                                    self.agent_team_types,
+                                    [k for k in self.env.AGENT_TYPES.keys()],
+                                    self.symmetric_teams)
+
+        self.learning_rewards = defaultdict(lambda: defaultdict(list))
 
         #----------------------------------------------------------------------
         # Initialise agent population
         #----------------------------------------------------------------------
-        self.main_agents = []
-        self.exploiters = []
-        self.historical_agents = []
+        self.main_agents_t1 = []
+        self.coaching_agents_t1 = []
+        self.league_agents_t1 = []
+        self.historical_agents_t1 = []
+        self.main_agents_t1_prev = []
+        self.coaching_agents_t1_prev = []
+        self.league_agents_t1_prev = []
 
         for _ in range(self.args.n_main_agents):
-            self.main_agents.append(Agent(n_channels, self.env.GRID_SIZE, local_metadata_dims[0]).to(self.args.device))
-
-        for _ in range(self.args.n_exploiters):
-            self.exploiters.append(Agent(n_channels, self.env.GRID_SIZE, local_metadata_dims[0]).to(self.args.device))
-
-    def duel(self, agent, opponent, max_steps=256, render=False, sleep_time=0.01):
-        """
-        Duelling algorithm.
-        """
-
-        step_count = 0
-        done = False
-        device = 'cpu'
-        self.env.reset()
-
-        while not done:
-            step_count += 1
-
-            actions = []
+            self.main_agents_t1.append(Agent(self.args.n_actions, self.n_channels, self.env.GRID_SIZE, self.local_metadata_dims[0]).to(self.args.device))
             
-            for agent_idx in np.arange(self.env.N_AGENTS):
-                # Get global and local states
-                if self.env.AGENT_TEAMS[agent_idx]==0:
-                    grid_state = torch.tensor(self.env.standardise_state(agent_idx, use_ego_state=True), dtype=torch.float32).to(device)
-                    metadata_state = torch.tensor(self.env.get_env_metadata_local(agent_idx), dtype=torch.float32).to(device)
-                    action = agent.get_action(grid_state, metadata_state)
-                else:
-                    grid_state = torch.tensor(self.env.standardise_state(agent_idx, use_ego_state=True, reverse_grid=True), dtype=torch.float32).to(device)
-                    metadata_state = torch.tensor(self.env.get_env_metadata_local(agent_idx), dtype=torch.float32).to(device)
-                    action = opponent.get_action(grid_state, metadata_state)
-                    action = self.env.get_reversed_action(action)
+        for _ in range(self.args.n_coaching_agents):
+            self.coaching_agents_t1.append(Agent(self.args.n_actions, self.n_channels, self.env.GRID_SIZE, self.local_metadata_dims[0]).to(self.args.device))
 
-                actions.append(action)
+        for _ in range(self.args.n_league_agents):
+            self.league_agents_t1.append(Agent(self.args.n_actions, self.n_channels, self.env.GRID_SIZE, self.local_metadata_dims[0]).to(self.args.device))
 
-            _, _, done = self.env.step(actions)
+        self.main_agents_t1_counter = [0] * self.args.n_main_agents
+        self.coaching_agents_t1_counter = [0] * self.args.n_coaching_agents
+        self.league_agents_t1_counter = [0] * self.args.n_league_agents
 
-            if render:
-                self.env.render(sleep_time=sleep_time)
-                print(step_count, self.env.metrics['team_flag_captures'][0], self.env.metrics['team_flag_captures'][1])
+        # Initialise agents if teams are asymmetric
+        if not self.symmetric_teams:
+            self.main_agents_t2 = []
+            self.coaching_agents_t2 = []
+            self.league_agents_t2 = []
+            self.historical_agents_t2 = []
+            self.main_agents_t2_prev = []
+            self.coaching_agents_t2_prev = []
+            self.league_agents_t2_prev = []
 
-            if step_count > max_steps:
-                done = True
+            for _ in range(self.args.n_main_agents):
+                self.main_agents_t2.append(Agent(self.args.n_actions, self.n_channels, self.env.GRID_SIZE, self.local_metadata_dims[0]).to(self.args.device))
+                
+            for _ in range(self.args.n_coaching_agents):
+                self.coaching_agents_t2.append(Agent(self.args.n_actions, self.n_channels, self.env.GRID_SIZE, self.local_metadata_dims[0]).to(self.args.device))
 
-        return self.env.metrics['team_flag_captures'][0], self.env.metrics['team_flag_captures'][1]
+            for _ in range(self.args.n_league_agents):
+                self.league_agents_t2.append(Agent(self.args.n_actions, self.n_channels, self.env.GRID_SIZE, self.local_metadata_dims[0]).to(self.args.device))
 
+            self.main_agents_t2_counter = [0] * self.args.n_main_agents
+            self.coaching_agents_t2_counter = [0] * self.args.n_coaching_agents
+            self.league_agents_t2_counter = [0] * self.args.n_league_agents
 
-    def select_opponent(self, iteration, agent_idx):
+    def select_opponent(self, 
+                        agent_type, 
+                        main_agents,
+                        coaching_agents,
+                        league_agents,
+                        historical_agents,
+                        main_agents_prev,
+                        coaching_agents_prev,
+                        league_agents_prev
+                        ):
         """
         Select agents for training.
         """
-        agent_types = ['main', 'exploiter', 'historical']
-        weights = self.opponent_selection_weights
+        opponent_types = ['main', 'coach', 'league', 'historical']
+        weights = self.opponent_selection_weights[agent_type]
 
         # Adjust weights if we do not have any historical agents yet
-        if len(self.historical_agents) == 0:
-            weights = (weights[0]/sum(weights[:2]), weights[1]/sum(weights[:2]), 0.0)
-
+        if len(historical_agents) == 0:
+            weights = (weights[0]/sum(weights[:3]), weights[1]/sum(weights[:3]), weights[2]/sum(weights[:3]), 0.0)
+            
         # Choose opponent
-        opponent_type = np.random.choice(agent_types, p=weights)
-        opponent_idx = np.random.choice(np.arange(len(self.main_agents)) if opponent_type == 'main' else
-                                        np.arange(len(self.exploiters)) if opponent_type == 'exploiter' else
-                                        np.arange(len(self.historical_agents)))
+        opponent_type = np.random.choice(opponent_types, p=weights)
+        opponent_idx = np.random.choice(np.arange(len(main_agents)) if opponent_type == 'main' else
+                                        np.arange(len(coaching_agents)) if opponent_type == 'coach' else
+                                        np.arange(len(league_agents)) if opponent_type == 'league' else
+                                        np.arange(len(historical_agents)))
                                 
+        # Train against the PREVIOUS version of the opponent 
         if opponent_type == 'main':
-            opponent = self.main_agents[opponent_idx] 
-        elif opponent_type == 'exploiter':
-            opponent = self.exploiters[opponent_idx]
+            opponent = main_agents_prev[opponent_idx]
+        elif opponent_type == 'coach':
+            opponent = coaching_agents_prev[opponent_idx]
+        elif opponent_type == 'league':
+            opponent = league_agents_prev[opponent_idx]
         else:
-            opponent = self.historical_agents[opponent_idx]
+            opponent = historical_agents[opponent_idx]
 
-        # Ensure agent1 and agent2 are different
-        while self.main_agents[agent_idx] == opponent:
-            opponent_type = np.random.choice(agent_types, p=weights)
-            opponent_idx = np.random.choice(np.arange(len(self.main_agents)) if opponent_type == 'main' else
-                                            np.arange(len(self.exploiters)) if opponent_type == 'exploiter' else
-                                            np.arange(len(self.historical_agents)))
-            if opponent_type == 'main':
-                opponent = self.main_agents[opponent_idx] 
-            elif opponent_type == 'exploiter':
-                opponent = self.exploiters[opponent_idx]
-            else:
-                opponent = self.historical_agents[opponent_idx]
-
-        print(f'Iteration: {iteration} Training main agent {agent_idx} vs {opponent_type} agent {opponent_idx}')
-        return opponent
-
-    def update_main_agents(self, win_rate_dict):
+        return opponent, opponent_type, opponent_idx
+    
+    def train_agent(self, 
+                    iteration, 
+                    agent_pool, 
+                    agent_counter, 
+                    agent_type, 
+                    main_agents,
+                    coaching_agents,
+                    league_agents,
+                    historical_agents,
+                    main_agents_prev,
+                    coaching_agents_prev,
+                    league_agents_prev, 
+                    train_team1=True
+                    ):
         """
-        Update agents based on relative performance.
+        Train agents.
         """
-        # Get the probability of adding each main agent, based on their win rates
-        win_rates = np.array([v for v in win_rate_dict.values()])
-        probs = win_rates/ sum(win_rates)
+        for agent_idx, agent in enumerate(agent_pool):
+            opponent, opponent_type, opponent_idx = self.select_opponent(agent_type,
+                                                                        main_agents,
+                                                                        coaching_agents,
+                                                                        league_agents,
+                                                                        historical_agents,
+                                                                        main_agents_prev,
+                                                                        coaching_agents_prev,
+                                                                        league_agents_prev)
 
-        if max(win_rates) - min(win_rates) > self.args.max_win_rate_diff:
-            # Get the main agent to add
-            agent_to_add = np.argmax(probs)
-            agent_to_remove = np.argmin(probs)
+            team_idx = 0 if train_team1 else 1
+            print(f'Iteration: {iteration} Team: {team_idx} Training {agent_type} agent {agent_idx} vs {opponent_type} agent {opponent_idx}')
 
-            print(f'Copying agent {agent_to_add}, removing agent {agent_to_remove}')
-
-            # Add the main agent to the historical agents pool
-            new_agent = self.main_agents[agent_to_add]
-            self.main_agents.append(new_agent)
-
-            # Maintain the pool size
-            del self.main_agents[agent_to_remove]
-
-    def update_exploiters(self):
-        """
-        Train exploiters against main agents.
-        """
-        for exploiter_idx, exploiter in enumerate(self.exploiters):
-            print(f'Updating exploiter {exploiter_idx}')
-            main_agent = np.random.choice(self.main_agents)  # Select a main agent to target
-
-            self.ppotrainer.train_ppo(self.args, self.env, exploiter, main_agent)
+            # Train PPO
+            total_rewards = self.ppotrainer.train_ppo(self.args, self.env, agent, opponent, train_team1=train_team1)
             clear_output()
 
-    def update_historical_agents(self, win_rate_dict):
+            # Store rewards
+            self.learning_rewards[iteration][agent_type + str(agent_idx) + str(team_idx)] = total_rewards
+
+            # Increment counter
+            agent_counter[agent_idx] += 1
+
+
+    def train_all_agents_symmetric(self, iteration=0):
+        # Create copies of previous agent states to train against
+        self.main_agents_t1_prev = [copy.deepcopy(model) for model in self.main_agents_t1]
+        self.coaching_agents_t1_prev = [copy.deepcopy(model) for model in self.coaching_agents_t1]
+        self.league_agents_t1_prev = [copy.deepcopy(model) for model in self.league_agents_t1]
+
+        # Train main agents
+        self.train_agent(iteration, 
+                        self.main_agents_t1, 
+                        self.main_agents_t1_counter, 
+                        'main', 
+                        self.main_agents_t1,
+                        self.coaching_agents_t1,
+                        self.league_agents_t1,
+                        self.historical_agents_t1,
+                        self.main_agents_t1_prev,
+                        self.coaching_agents_t1_prev,
+                        self.league_agents_t1_prev, 
+                        train_team1=True)
+        
+        # Train coaching agents
+        self.train_agent(iteration, 
+                        self.coaching_agents_t1, 
+                        self.coaching_agents_t1_counter, 
+                        'coach', 
+                        self.main_agents_t1,
+                        self.coaching_agents_t1,
+                        self.league_agents_t1,
+                        self.historical_agents_t1,
+                        self.main_agents_t1_prev,
+                        self.coaching_agents_t1_prev,
+                        self.league_agents_t1_prev, 
+                        train_team1=True)
+        
+        # Train league agents
+        self.train_agent(iteration, 
+                        self.league_agents_t1, 
+                        self.league_agents_t1_counter, 
+                        'league', 
+                        self.main_agents_t1,
+                        self.coaching_agents_t1,
+                        self.league_agents_t1,
+                        self.historical_agents_t1,
+                        self.main_agents_t1_prev,
+                        self.coaching_agents_t1_prev,
+                        self.league_agents_t1_prev, 
+                        train_team1=True)
+       
+    def train_all_agents_non_symmetric(self, iteration=0):
+        # Create copies of previous agent states to train against
+        self.main_agents_t1_prev = [copy.deepcopy(model) for model in self.main_agents_t1]
+        self.coaching_agents_t1_prev = [copy.deepcopy(model) for model in self.coaching_agents_t1]
+        self.league_agents_t1_prev = [copy.deepcopy(model) for model in self.league_agents_t1]
+
+        # Create copies of previous agent states to train against
+        self.main_agents_t2_prev = [copy.deepcopy(model) for model in self.main_agents_t2]
+        self.coaching_agents_t2_prev = [copy.deepcopy(model) for model in self.coaching_agents_t2]
+        self.league_agents_t2_prev = [copy.deepcopy(model) for model in self.league_agents_t2]
+
+        # Train main agents
+        self.train_agent(iteration, 
+                        self.main_agents_t1, 
+                        self.main_agents_t1_counter, 
+                        'main', 
+                        self.main_agents_t2,
+                        self.coaching_agents_t2,
+                        self.league_agents_t2,
+                        self.historical_agents_t2,
+                        self.main_agents_t2_prev,
+                        self.coaching_agents_t2_prev,
+                        self.league_agents_t2_prev, 
+                        train_team1=True)
+        
+        self.train_agent(iteration, 
+                        self.main_agents_t2, 
+                        self.main_agents_t2_counter, 
+                        'main', 
+                        self.main_agents_t1,
+                        self.coaching_agents_t1,
+                        self.league_agents_t1,
+                        self.historical_agents_t1,
+                        self.main_agents_t1_prev,
+                        self.coaching_agents_t1_prev,
+                        self.league_agents_t1_prev, 
+                        train_team1=False)
+        
+        # Train coaching agents
+        self.train_agent(iteration, 
+                        self.coaching_agents_t1, 
+                        self.coaching_agents_t1_counter, 
+                        'coach', 
+                        self.main_agents_t2,
+                        self.coaching_agents_t2,
+                        self.league_agents_t2,
+                        self.historical_agents_t2,
+                        self.main_agents_t2_prev,
+                        self.coaching_agents_t2_prev,
+                        self.league_agents_t2_prev, 
+                        train_team1=True)
+        
+        self.train_agent(iteration, 
+                        self.coaching_agents_t2, 
+                        self.coaching_agents_t2_counter, 
+                        'coach',
+                        self.main_agents_t1,
+                        self.coaching_agents_t1,
+                        self.league_agents_t1,
+                        self.historical_agents_t1,
+                        self.main_agents_t1_prev,
+                        self.coaching_agents_t1_prev,
+                        self.league_agents_t1_prev, 
+                        train_team1=False)
+        
+        # Train league agents
+        self.train_agent(iteration, 
+                        self.league_agents_t1, 
+                        self.league_agents_t1_counter, 
+                        'league', 
+                        self.main_agents_t2,
+                        self.coaching_agents_t2,
+                        self.league_agents_t2,
+                        self.historical_agents_t2,
+                        self.main_agents_t2_prev,
+                        self.coaching_agents_t2_prev,
+                        self.league_agents_t2_prev, 
+                        train_team1=True)
+        
+        self.train_agent(iteration, 
+                        self.league_agents_t2, 
+                        self.league_agents_t2_counter, 
+                        'league',
+                        self.main_agents_t1,
+                        self.coaching_agents_t1,
+                        self.league_agents_t1,
+                        self.historical_agents_t1,
+                        self.main_agents_t1_prev,
+                        self.coaching_agents_t1_prev,
+                        self.league_agents_t1_prev, 
+                        train_team1=False)
+            
+    def calculate_winrate_matrix_symmetric(self):
         """
-        Add main agents to history.
+        Calculate winrate matrix when teams are symmetric.
         """
-        # Get the probability of adding each main agent, based on their win rates
-        win_rates = np.array([v for v in win_rate_dict.values()])
-        probs = win_rates / sum(win_rates)
 
-        # Get the main agent to add
-        main_agent_to_add = np.random.choice(self.main_agents, probs, k=1)
+        winrate_matrix = defaultdict(int)
+        draw_matrix = defaultdict(int)
+        t1_label = '0_'
 
-        # Add the main agent to the historical agents pool
-        self.historical_agents.append(main_agent_to_add)
+        # Parallelise duelling
+        async_results = []
+        for agent_idx, agent in enumerate(self.all_agents_t1):
+            for opponent_idx, opponent in enumerate(self.all_agents_t1):
+                if agent_idx > opponent_idx:
+                    for _ in range(self.args.number_of_duels):
+                        idxs = (t1_label + str(agent_idx), t1_label + str(opponent_idx))
+                        async_result = ray_duel.remote(self.env, agent, opponent, idxs, return_result=True)
+                        async_results.append(async_result)
+        duel_results = ray.get(async_results)
 
-        # Maintain the pool size
-        if len(self.historical_agents) > self.args.n_historical_agents:
-            self.historical_agents.pop(0)  # Remove the oldest agent
+        # Calculate win rates
+        for agent_idx, opponent_idx, result in duel_results:
+            winrate_matrix[(agent_idx, opponent_idx)] += (result == 1) / self.args.number_of_duels
+            draw_matrix[(agent_idx, opponent_idx)] += (result == 0) / self.args.number_of_duels
+        
+        # Get inverse win rates
+        keys = list(winrate_matrix.keys())
+        for agent_idx, opponent_idx in keys:
+            winrate_matrix[(opponent_idx, agent_idx)] = 1 - winrate_matrix[(agent_idx, opponent_idx)] - draw_matrix[(agent_idx, opponent_idx)]
+
+        self.winrate_matrix = winrate_matrix
+        self.winrate_matrices.append(winrate_matrix)
+
+    def create_all_agents_list(self):
+        """
+        Create lists of all agents.
+        """
+
+        self.all_agents_t1 = self.main_agents_t1 \
+                        + self.coaching_agents_t1 \
+                        + self.league_agents_t1 \
+                        + self.historical_agents_t1
+        
+        self.all_agents_t1_counters = self.main_agents_t1_counter \
+                        + self.coaching_agents_t1_counter \
+                        + self.league_agents_t1_counter \
+                        + [np.inf] * len(self.historical_agents_t1)
+
+        self.all_agents_t2 = []      
+        if not self.symmetric_teams:
+            self.all_agents_t2 = self.main_agents_t2 \
+                            + self.coaching_agents_t2 \
+                            + self.league_agents_t2 \
+                            + self.historical_agents_t2
+            
+            self.all_agents_t2_counters = self.main_agents_t2_counter \
+                            + self.coaching_agents_t2_counter \
+                            + self.league_agents_t2_counter \
+                            + [np.inf] * len(self.historical_agents_t2)
+
+    def calculate_winrate_matrix_non_symmetric(self):
+        """
+        Calculate winrate matrix when teams are not symmetric.
+        """
+
+        winrate_matrix = defaultdict(int)
+        draw_matrix = defaultdict(int)
+        t1_label = '0_'
+        t2_label = '1_'
+
+        # Parallelise duelling
+        async_results = []
+        for agent_idx, agent in enumerate(self.all_agents_t1):
+            for opponent_idx, opponent in enumerate(self.all_agents_t2):
+                for _ in range(self.args.number_of_duels):
+                    idxs = (t1_label + str(agent_idx), t2_label + str(opponent_idx))
+                    async_result = ray_duel.remote(self.env, agent, opponent, idxs, return_result=True)
+                    async_results.append(async_result)
+        duel_results = ray.get(async_results)
+
+        # Calculate win rates
+        for agent_idx, opponent_idx, result in duel_results:
+            winrate_matrix[(agent_idx, opponent_idx)] += (result == 1) / self.args.number_of_duels
+            draw_matrix[(agent_idx, opponent_idx)] += (result == 0) / self.args.number_of_duels
+        
+        # Get inverse win rates
+        keys = list(winrate_matrix.keys())
+        for agent_idx, opponent_idx in keys:
+            winrate_matrix[(opponent_idx, agent_idx)] = 1 - winrate_matrix[(agent_idx, opponent_idx)] - draw_matrix[(agent_idx, opponent_idx)]
+
+        self.winrate_matrix = winrate_matrix
+        self.winrate_matrices.append(winrate_matrix)
+    
+    def update_agent_pools(self, team_idx=0):
+        """
+        Update agent pools when teams are symmetric.
+        """
+
+        print(f'Updating agent pools for team {team_idx}')
+
+        keys = list(self.winrate_matrix.keys())
+        agent_labels = list(set(k[0] for k in keys if int(k[0][0])==team_idx))
+        agent_idxs = np.arange(len(agent_labels))
+        wr_items = list(self.winrate_matrix.items())
+        agent_avg_win_rates = np.array([np.mean([v for k, v in wr_items if k[0] == i]) for i in agent_labels])
+
+        if team_idx == 0:
+            self.agent_avg_win_rates_t1 = agent_avg_win_rates
+        else:
+            self.agent_avg_win_rates_t2 = agent_avg_win_rates
+        print(f'Agent win rates: {agent_avg_win_rates}')
+        
+        # Break ties randomly if multiple agents have the same winrate
+        best_agent_idx = np.random.choice(np.flatnonzero(agent_avg_win_rates == agent_avg_win_rates.max()))
+        
+        best_agent_win_rate = agent_avg_win_rates[best_agent_idx]
+        if team_idx == 0:
+            best_agent_weights = self.all_agents_t1[best_agent_idx].state_dict()
+        else:
+            best_agent_weights = self.all_agents_t2[best_agent_idx].state_dict()
+            
+        print(f'Best agent: {best_agent_idx}, win rate of {best_agent_win_rate}')
+
+        # Remove underperforming historical agents
+        historical_agents_to_remove = []
+        if team_idx == 0:
+            n_historical_agents = len(self.historical_agents_t1)
+        else:
+            n_historical_agents = len(self.historical_agents_t2)
+
+        for agent_idx in np.arange(n_historical_agents):
+            adj_agent_idx = agent_idx + self.args.n_main_agents + self.args.n_coaching_agents + self.args.n_league_agents
+            if agent_avg_win_rates[adj_agent_idx] < self.args.min_historical_agent_winrate:
+                historical_agents_to_remove.append(agent_idx)
+                print(f'Historical agents for removal: {agent_idx}, winrate of {agent_avg_win_rates[adj_agent_idx]}')
+            if team_idx == 0:
+                self.historical_agents_t1 = [v for agent_idx, v in enumerate(self.historical_agents_t1) if agent_idx not in historical_agents_to_remove]
+            else:
+                self.historical_agents_t2 = [v for agent_idx, v in enumerate(self.historical_agents_t2) if agent_idx not in historical_agents_to_remove]
+
+        # Replace agents if best agent is good enough
+        if best_agent_win_rate > self.args.min_agent_winrate_for_promotion:
+            for agent_idx in agent_idxs[:self.args.n_main_agents + self.args.n_coaching_agents + self.args.n_league_agents]:
+                if team_idx == 0:
+                    agent_iteration_count = self.all_agents_t1_counters[agent_idx]
+                else:
+                    agent_iteration_count = self.all_agents_t2_counters[agent_idx]
+                if agent_avg_win_rates[agent_idx] < self.args.min_agent_winrate and agent_iteration_count > self.args.min_agent_iterations_for_replacement:
+                    if agent_idx < self.args.n_main_agents:
+                        adj_agent_idx = agent_idx
+                        replacement_agent = Agent(self.args.n_actions, self.n_channels, self.env.GRID_SIZE, self.local_metadata_dims[0]).to(self.args.device)
+                        replacement_agent.load_state_dict(best_agent_weights)
+                        if team_idx == 0:
+                            self.main_agents_t1[adj_agent_idx] = replacement_agent
+                            self.main_agents_t1_counter[adj_agent_idx] = 0
+                        else:
+                            self.main_agents_t2[adj_agent_idx] = replacement_agent
+                            self.main_agents_t2_counter[adj_agent_idx] = 0
+                        print(f'Replacing main agent {adj_agent_idx} with agent {best_agent_idx}')
+
+                    elif agent_idx < (self.args.n_main_agents + self.args.n_coaching_agents):
+                        adj_agent_idx = agent_idx - self.args.n_main_agents
+                        replacement_agent = Agent(self.args.n_actions, self.n_channels, self.env.GRID_SIZE, self.local_metadata_dims[0]).to(self.args.device)
+                        replacement_agent.load_state_dict(best_agent_weights)
+                        if team_idx == 0:
+                            self.coaching_agents_t1[adj_agent_idx] = replacement_agent
+                            self.coaching_agents_t1_counter[adj_agent_idx] = 0
+                        else:
+                            self.coaching_agents_t2[adj_agent_idx] = replacement_agent
+                            self.coaching_agents_t2_counter[adj_agent_idx] = 0                           
+                        print(f'Replacing coaching agent {adj_agent_idx} with agent {best_agent_idx}')
+
+                    elif agent_idx < (self.args.n_main_agents + self.args.n_coaching_agents + self.args.n_league_agents):
+                        adj_agent_idx = agent_idx - (self.args.n_main_agents + self.args.n_coaching_agents)
+                        replacement_agent = Agent(self.args.n_actions, self.n_channels, self.env.GRID_SIZE, self.local_metadata_dims[0]).to(self.args.device)
+                        replacement_agent.load_state_dict(best_agent_weights)
+                        if team_idx == 0:
+                            self.league_agents_t1[adj_agent_idx] = replacement_agent
+                            self.league_agents_t1_counter[adj_agent_idx] = 0
+                        else:
+                            self.league_agents_t2[adj_agent_idx] = replacement_agent
+                            self.league_agents_t2_counter[adj_agent_idx] = 0
+                        print(f'Replacing league agent {adj_agent_idx} with agent {best_agent_idx}')
+
+            # Add best performing agent to historical agent pool
+            print(f'Updating historical agent pool')
+            if team_idx == 0:
+                historical_agent_weights = [str(a.state_dict()) for a in self.historical_agents_t1]
+            else:
+                historical_agent_weights = [str(a.state_dict()) for a in self.historical_agents_t2]
+            if str(best_agent_weights) in historical_agent_weights:
+                print('Best agent already exists in historical agent pool!')
+            else:
+                print(f'Adding agent {best_agent_idx} to historic agents\n')
+                new_agent = Agent(self.args.n_actions, self.n_channels, self.env.GRID_SIZE, self.local_metadata_dims[0]).to(self.args.device)
+                new_agent.load_state_dict(best_agent_weights)
+                if team_idx == 0:
+                    self.historical_agents_t1.append(new_agent)
+                else:
+                    self.historical_agents_t2.append(new_agent)
+                if team_idx == 0 and len(self.historical_agents_t1) > self.args.n_historical_agents:
+                    self.historical_agents_t1.pop(0)
+                elif len(self.historical_agents_t2) > self.args.n_historical_agents:
+                    self.historical_agents_t2.pop(0)
+            
+    def generate_metrics_symmetric(self, iteration, env_copy):
+        """
+        Generate metrics for symmetric teams.
+        """
+
+        agent_labels = ['m' + str(i) for i in range(self.args.n_main_agents)] \
+                     + ['c' + str(i) for i in range(self.args.n_coaching_agents)] \
+                     + ['l' + str(i) for i in range(self.args.n_league_agents)] 
+        
+        idxs_to_keep = len(self.all_agents_t1) - len(self.historical_agents_t1)
+        scaling_factor = 1 / (len(self.all_agents_t1) - 1 + self.args.number_of_duels)
+
+        # Use the remote function to run the 'duel' method in parallel
+        async_results = []
+        number_of_duels = 0
+        for agent_idx, agent in enumerate(self.all_agents_t1[:idxs_to_keep]):
+            for opponent_idx, opponent in enumerate(self.all_agents_t1[:idxs_to_keep]):
+                for _ in range(self.args.number_of_duels):
+                    number_of_duels += 1
+                    idxs = (agent_idx, opponent_idx)
+                
+                    async_result = ray_duel.remote(env_copy, agent, opponent, idxs, return_result=False)
+                    async_results.append(async_result)
+
+        # Collect the results
+        duel_results = ray.get(async_results)
+
+        for agent_idx, opponent_idx, metrics in duel_results:
+            agent_label = agent_labels[agent_idx]
+            self.metlog.harvest_metrics(metrics, agent_label, iteration, scaling_factor)
+
+        print(f'Total duels {number_of_duels}')
+
+    def generate_metrics_non_symmetric(self, iteration, env_copy):
+        """
+        Generate metrics for symmetric teams.
+        """
+
+        agent_labels_t1 = ['t0_m' + str(i) for i in range(self.args.n_main_agents)] \
+                        + ['t0_c' + str(i) for i in range(self.args.n_coaching_agents)] \
+                        + ['t0_l' + str(i) for i in range(self.args.n_league_agents)] \
+                        + ['t0_h' + str(i) for i in range(len(self.historical_agents_t1))] 
+        
+        agent_labels_t2 = ['t1_m' + str(i) for i in range(self.args.n_main_agents)] \
+                        + ['t1_c' + str(i) for i in range(self.args.n_coaching_agents)] \
+                        + ['t1_l' + str(i) for i in range(self.args.n_league_agents)] \
+                        + ['t1_h' + str(i) for i in range(len(self.historical_agents_t1))] 
+        
+        idxs_to_keep_t1 = len(self.all_agents_t1) - len(self.historical_agents_t1)
+        idxs_to_keep_t2 = len(self.all_agents_t2) - len(self.historical_agents_t2)
+
+        scaling_factor_t1 = 1 / (len(self.all_agents_t2) - 1 + self.args.number_of_duels)
+        scaling_factor_t2 = 1 / (len(self.all_agents_t1) - 1 + self.args.number_of_duels)
+        
+        # Use the remote function to run the 'duel' method in parallel
+        async_results = []
+        number_of_duels = 0
+        for agent_idx, agent in enumerate(self.all_agents_t1[:idxs_to_keep_t1]):
+            for opponent_idx, opponent in enumerate(self.all_agents_t2[:idxs_to_keep_t2]):
+                for _ in range(self.args.number_of_duels):
+                    number_of_duels += 1
+                    idxs = (agent_idx, opponent_idx)
+                
+                    async_result = ray_duel.remote(env_copy, agent, opponent, idxs, return_result=False)
+                    async_results.append(async_result)
+
+        # Collect the results
+        duel_results_t1 = ray.get(async_results)
+
+        for agent_idx, opponent_idx, metrics in duel_results_t1:
+            agent_t1_label = agent_labels_t1[agent_idx]
+            agent_t2_label = agent_labels_t2[opponent_idx]
+            self.metlog.harvest_metrics(metrics, agent_t1_label, iteration, scaling_factor_t1, team_idx=0)
+            self.metlog.harvest_metrics(metrics, agent_t2_label, iteration, scaling_factor_t2, team_idx=1)
+
+        print(f'Total duels {number_of_duels}')
+
+    def checkpoint(self, meta_run, iteration):
+        """
+        Save down objects.
+        """
+        iteration_adj = iteration + 1
+
+        time_capsule = TimeCapsule(
+                            self.args,
+                            self.symmetric_teams,
+                            self.env.AGENT_TYPES,
+                            self.env.AGENT_TEAMS,
+                            self.all_agents_t1,
+                            self.all_agents_t2,
+                            self.metlog,
+                            self.winrate_matrices)
+
+        if not os.path.exists(self.OUTPUT_FOLDER_NAME):
+            os.makedirs(self.OUTPUT_FOLDER_NAME)
+
+        with open(self.OUTPUT_FOLDER_NAME + '/' + self.TIME_CAPSULE_FILE_NAME + '_' + str(meta_run) + '_' + str(iteration_adj) + self.FILE_EXT, 'wb') as f:
+            pickle.dump(time_capsule, f)
 
     def train_league(self):
+        """
+        Train the league.
+        """
         
         if self.args.use_wandb_selfplay:
             wandb.init(project=self.args.wandb_project_name,
                         name=self.args.exp_name,
                         config=vars(self.args))
                         
+        # Init ray for parallelisation
+        ray.shutdown() 
+        ray.init()
+        
+        env_id = ray.put(self.env)
+        env_copy = ray.get(env_id)
+
         #----------------------------------------------------------------------
         # League Training Start
         #----------------------------------------------------------------------
-        for iteration in range(self.args.number_of_iterations):
+        for meta_run in range(self.args.number_of_metaruns):
+            self._init_objects()
 
-            for agent_idx, agent in enumerate(self.main_agents):
-                #TODO: Update to select multiple opponents and return as a list
-                # Select agent to train and opponent
-                opponent = self.select_opponent(iteration, agent_idx)
+            for iteration in range(self.args.number_of_iterations):
 
-                #TODO: Update train_ppo method to accept a list of opponents
-                # Train PPO
-                self.ppotrainer.train_ppo(self.args, self.env, agent, opponent)
-                clear_output()
+                #----------------------------------------------------------------------
+                # Train agents
+                #----------------------------------------------------------------------
+                print(f'Iteration: {iteration} Training agents...')
+                if not self.symmetric_teams:
+                    print('Teams are not symmetric - two leagues will be trained')
+                start_time = time.perf_counter()
 
-            #----------------------------------------------------------------------
-            # Duelling Phase and harvest of metrics
-            #----------------------------------------------------------------------
-            print(f'Iteration: {iteration} Duelling...')
-            all_agents = self.main_agents + self.exploiters + self.historical_agents
-            win_rate_dict = {i:0 for i in range(len(self.main_agents))}
-            for agent_idx, agent in enumerate(self.main_agents):
-                for opponent_idx, opponent in enumerate(all_agents):
-                    if agent_idx != opponent_idx:
-                        # print(f'agent {agent_idx} vs opponent {opponent_idx}')
-                        for _ in range(self.args.number_of_duels):
-                            scaling_factor = 1 / (len(all_agents) - 1 + self.args.number_of_duels)
-                            agent_score, opponent_score = self.duel(agent, opponent)
-                            if agent_score > opponent_score:
-                                win_rate_dict[agent_idx] += 1 / (self.args.number_of_duels * len(all_agents)-1)
+                if self.symmetric_teams:
+                    self.train_all_agents_symmetric(iteration)
+                else:
+                    self.train_all_agents_non_symmetric(iteration)
 
-                            # Log metrics -> track for main agents
-                            self.metlog.harvest_metrics(self.env, agent_idx, iteration, scaling_factor)
+                end_time = time.perf_counter()
+                elapsed_time = end_time - start_time
+                print(f'Training agents took {elapsed_time:.4f} seconds to run.\n')
 
-            print(f'Win rates:\n{win_rate_dict}')
+                #----------------------------------------------------------------------
+                # Duelling Phase and harvest of metrics
+                #----------------------------------------------------------------------
 
-            # Log metrics
+                self.create_all_agents_list()
+
+                if iteration % self.args.inference_interval == 0:
+                    print(f'Iteration: {iteration} Metrics collection...')
+                    start_time = time.perf_counter()
+                    
+                    if len(self.all_agents_t1) >= 1:
+                        if self.symmetric_teams:
+                            self.generate_metrics_symmetric(iteration, env_copy)
+                        else:
+                            self.generate_metrics_non_symmetric(iteration, env_copy)
+
+                    end_time = time.perf_counter()
+                    elapsed_time = end_time - start_time
+                    print(f'Metrics collection took {elapsed_time:.4f} seconds to run.\n') 
+
+                # Log metrics
+                if self.args.use_wandb_selfplay:
+                    self.metlog.log_to_wandb()
+
+                #----------------------------------------------------------------------
+                # Calculate overall win matrix
+                #----------------------------------------------------------------------
+                print(f'Iteration: {iteration} Calculating win rate matrix...')
+                start_time = time.perf_counter()
+
+                if len(self.all_agents_t1) >= 1:
+                    if self.symmetric_teams:
+                        self.calculate_winrate_matrix_symmetric()
+                    else:
+                        self.calculate_winrate_matrix_non_symmetric()
+
+                end_time = time.perf_counter()
+                elapsed_time = end_time - start_time
+                print(f'Calculating winrate matrix took {elapsed_time:.4f} seconds to run.\n')
+
+                #----------------------------------------------------------------------
+                # Update agent pools
+                #----------------------------------------------------------------------
+                print(f'Iteration: {iteration} updating agent pools...')
+                start_time = time.perf_counter()
+
+                if iteration > self.args.min_learning_rounds and len(self.all_agents_t1) > 1:
+                    self.update_agent_pools(team_idx=0)
+                    if not self.symmetric_teams:
+                        self.update_agent_pools(team_idx=1)
+                        
+                end_time = time.perf_counter()
+                elapsed_time = end_time - start_time
+                print(f'Updating agent pools took {elapsed_time:.4f} seconds to run.\n')
+
+                #----------------------------------------------------------------------
+                # Checkpointing
+                #----------------------------------------------------------------------
+                print(f'Saving objects...\n')
+                if iteration == 0 or (iteration + 1) % self.args.checkpoint_frequency == 0:
+                    self.checkpoint(meta_run, iteration)
+
+            # Close wandb session
             if self.args.use_wandb_selfplay:
-                self.metlog.log_to_wandb()
+                self.metlog.log_matplotlib_plots_to_wandb()
+                self.metlog.log_summary_plot_to_wandb()
+                # metlog.log_wandb_table_plots()
+                wandb.finish()
 
-            #----------------------------------------------------------------------
-            # Update agent pools
-            #----------------------------------------------------------------------
-            if iteration % self.args.main_agent_update_interval == 0:
-                print(f'Iteration: {iteration} Updating main agents')
-                self.update_main_agents(win_rate_dict)
-
-            if iteration % self.args.exploiter_update_interval == 0:
-                print(f'Iteration: {iteration} Updating exploiters')
-                self.update_exploiters()
-
-            if iteration % self.args.historical_update_interval == 0:
-                print(f'Iteration: {iteration} Updating historical agent pool')
-                self.update_historical_agents(win_rate_dict)
-
-        # Close wandb session
-        if self.args.use_wandb_selfplay:
-            self.metlog.log_matplotlib_plots_to_wandb()
-            # metlog.log_wandb_table_plots()
-            wandb.finish()
+            # Shutdown Ray
+            ray.shutdown()
