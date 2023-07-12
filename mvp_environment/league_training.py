@@ -108,13 +108,13 @@ class LeagueTrainer:
         self.league_agents_t1_prev = []
 
         for _ in range(self.args.n_main_agents):
-            self.main_agents_t1.append(Agent(self.args.n_actions, self.n_channels, self.env.GRID_SIZE, self.local_metadata_dims[0]).to(self.args.device))
+            self.main_agents_t1.append(Agent(self.args.n_actions, self.n_channels, self.env.GRID_SIZE, self.local_metadata_dims[0], self.args.device))
             
         for _ in range(self.args.n_coaching_agents):
-            self.coaching_agents_t1.append(Agent(self.args.n_actions, self.n_channels, self.env.GRID_SIZE, self.local_metadata_dims[0]).to(self.args.device))
+            self.coaching_agents_t1.append(Agent(self.args.n_actions, self.n_channels, self.env.GRID_SIZE, self.local_metadata_dims[0], self.args.device))
 
         for _ in range(self.args.n_league_agents):
-            self.league_agents_t1.append(Agent(self.args.n_actions, self.n_channels, self.env.GRID_SIZE, self.local_metadata_dims[0]).to(self.args.device))
+            self.league_agents_t1.append(Agent(self.args.n_actions, self.n_channels, self.env.GRID_SIZE, self.local_metadata_dims[0], self.args.device))
 
         self.main_agents_t1_counter = [0] * self.args.n_main_agents
         self.coaching_agents_t1_counter = [0] * self.args.n_coaching_agents

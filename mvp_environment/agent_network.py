@@ -3,7 +3,7 @@ import torch.nn as nn
 from torch.distributions.categorical import Categorical
     
 class Agent(nn.Module):
-    def __init__(self, n_actions, n_channels, grid_size, metadata_size):
+    def __init__(self, n_actions, n_channels, grid_size, metadata_size, device='cpu'):
         super(Agent, self).__init__()
         self.n_actions = n_actions
         self.n_channels = n_channels
@@ -16,9 +16,10 @@ class Agent(nn.Module):
         self.fc2 = nn.Linear(256, 128)
         self.action_head = nn.Linear(128, n_actions)
         self.value_head = nn.Linear(128, 1)
+        self.device = device
 
         # Actions masks
-        self.mask_5 = torch.tensor([1] * 5 + [0] * (n_actions - 5))
+        self.mask_5 = torch.tensor([1] * 5 + [0] * (n_actions - 5)).to(self.device)
 
     def get_unrolled_conv_size(self):
         # Calculate number of dimensions for unrolled conv2 layer
