@@ -278,7 +278,8 @@ class PPOTrainer:
             self.reverse_grid = True
             self.team_to_train = 1
 
-        self.device = torch.device("cuda" if torch.cuda.is_available() and self.args.cuda else "cpu")
+        # self.device = torch.device("cuda" if torch.cuda.is_available() and self.args.cuda else "cpu")
+        self.device = self.args.device
         self.optimizer = optim.Adam(agent.parameters(), lr=self.args.learning_rate, eps=1e-5)
 
         # Note that because each agent in the team moves once per timestep, we need to multiply the
