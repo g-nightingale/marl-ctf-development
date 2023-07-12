@@ -14,8 +14,8 @@ import pickle
 from utils import duel
 
 @ray.remote
-def ray_duel(env, agent, opponent, idxs, return_result):
-    return duel(env, agent, opponent, idxs, return_result)
+def ray_duel(env, agent, opponent, idxs, return_result, device):
+    return duel(env, agent, opponent, idxs, return_result, device)
 
 class TimeCapsule:
     def __init__(self,
@@ -379,7 +379,7 @@ class LeagueTrainer:
                 if agent_idx > opponent_idx:
                     for _ in range(self.args.number_of_duels):
                         idxs = (t1_label + str(agent_idx), t1_label + str(opponent_idx))
-                        async_result = ray_duel.remote(self.env, agent, opponent, idxs, return_result=True)
+                        async_result = ray_duel.remote(self.env, agent, opponent, idxs, return_result=True, device=self.args.device)
                         async_results.append(async_result)
         duel_results = ray.get(async_results)
 
