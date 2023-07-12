@@ -439,7 +439,7 @@ class LeagueTrainer:
             for opponent_idx, opponent in enumerate(self.all_agents_t2):
                 for _ in range(self.args.number_of_duels):
                     idxs = (t1_label + str(agent_idx), t2_label + str(opponent_idx))
-                    async_result = ray_duel.remote(self.env, agent, opponent, idxs, return_result=True)
+                    async_result = ray_duel.remote(self.env, agent, opponent, idxs, return_result=True, device=self.args.device)
                     async_results.append(async_result)
         duel_results = ray.get(async_results)
 
@@ -589,7 +589,7 @@ class LeagueTrainer:
                     number_of_duels += 1
                     idxs = (agent_idx, opponent_idx)
                 
-                    async_result = ray_duel.remote(env_copy, agent, opponent, idxs, return_result=False)
+                    async_result = ray_duel.remote(env_copy, agent, opponent, idxs, return_result=False, device=self.args.device)
                     async_results.append(async_result)
 
         # Collect the results
@@ -631,7 +631,7 @@ class LeagueTrainer:
                     number_of_duels += 1
                     idxs = (agent_idx, opponent_idx)
                 
-                    async_result = ray_duel.remote(env_copy, agent, opponent, idxs, return_result=False)
+                    async_result = ray_duel.remote(env_copy, agent, opponent, idxs, return_result=False, device=self.args.device)
                     async_results.append(async_result)
 
         # Collect the results
@@ -695,7 +695,7 @@ class LeagueTrainer:
                 #----------------------------------------------------------------------
                 # Train agents
                 #----------------------------------------------------------------------
-                print(f'Iteration: {iteration} Training agents...')
+                print(f'Meta run: {meta_run} Iteration: {iteration} Training agents...')
                 if not self.symmetric_teams:
                     print('Teams are not symmetric - two leagues will be trained')
                 start_time = time.perf_counter()
@@ -716,7 +716,7 @@ class LeagueTrainer:
                 self.create_all_agents_list()
 
                 if iteration % self.args.inference_interval == 0:
-                    print(f'Iteration: {iteration} Metrics collection...')
+                    print(f'Meta run: {meta_run} Iteration: {iteration} Metrics collection...')
                     start_time = time.perf_counter()
                     
                     if len(self.all_agents_t1) >= 1:
@@ -736,7 +736,7 @@ class LeagueTrainer:
                 #----------------------------------------------------------------------
                 # Calculate overall win matrix
                 #----------------------------------------------------------------------
-                print(f'Iteration: {iteration} Calculating win rate matrix...')
+                print(f'Meta run: {meta_run} Iteration: {iteration} Calculating win rate matrix...')
                 start_time = time.perf_counter()
 
                 if len(self.all_agents_t1) >= 1:
@@ -752,7 +752,7 @@ class LeagueTrainer:
                 #----------------------------------------------------------------------
                 # Update agent pools
                 #----------------------------------------------------------------------
-                print(f'Iteration: {iteration} updating agent pools...')
+                print(f'Meta run: {meta_run} Iteration: {iteration} updating agent pools...')
                 start_time = time.perf_counter()
 
                 if iteration > self.args.min_learning_rounds and len(self.all_agents_t1) > 1:

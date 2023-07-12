@@ -1,22 +1,20 @@
 from league_training import LeagueTrainer
-from utils import duel, create_gif, create_plots, plot_heatmaps
 from scenarios import CtfScenarios as scn
-import torch
-
 
 class TrainingConfig():
     def __init__(self):
         #---------- Overall config
         self.wandb_project_name = "MARL-CTF-Test"
-        self.exp_name = "2_jailbreak"
+        self.exp_name = "0_arrow"
         self.use_wandb_selfplay = False
         self.use_wandb_ppo = False
         self.seed = 42
         self.checkpoint_frequency = 10
-        self.number_of_metaruns = 3
+        self.number_of_metaruns = 10
+        self.device = 'cpu'
 
         #---------- Self-play config
-        self.number_of_iterations = 20
+        self.number_of_iterations = 50
         self.number_of_duels = 30
         self.min_learning_rounds = 1
         self.n_main_agents = 1
@@ -34,14 +32,14 @@ class TrainingConfig():
         self.env_config = {
             'GRID_SIZE':11,
             'AGENT_CONFIG':{
-                0: {'team':0, 'type':3},
+                0: {'team':0, 'type':1},
                 1: {'team':1, 'type':0},
                 2: {'team':0, 'type':0},
                 3: {'team':1, 'type':0},
                 # 4: {'team':0, 'type':2},
                 # 5: {'team':1, 'type':2},
             },
-            'SCENARIO': scn.jailbreak,
+            'SCENARIO': scn.arrow,
             'GAME_STEPS': 500,
             'USE_ADJUSTED_REWARDS': True,
             'MAP_SYMMETRY_CHECK': False
@@ -70,7 +68,6 @@ class TrainingConfig():
         self.vf_coef = 0.5
         self.max_grad_norm = 0.5
         self.target_kl = None
-        self.device = 'cpu'
 
 
 if __name__ == '__main__':
