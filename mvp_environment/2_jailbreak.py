@@ -11,7 +11,7 @@ class TrainingConfig():
         self.seed = 42
         self.checkpoint_frequency = 10
         self.number_of_metaruns = 10
-        self.device = 'cuda'
+        self.device = 'cpu'
 
         #---------- Self-play config
         self.number_of_iterations = 50

@@ -66,6 +66,8 @@ def create_plots(run_dir,
                 "team_flag_dispossessions",
                 "team_steps_defending_zone",
                 "team_steps_attacking_zone",
+                "team_steps_adj_teammate",
+                "team_steps_adj_opponent",
                 "team_blocks_laid",
                 "team_blocks_mined",
                 "team_blocks_laid_distance_from_own_flag",
@@ -80,10 +82,12 @@ def create_plots(run_dir,
                 "agent_flag_dispossessions",
                 "agent_steps_defending_zone",
                 "agent_steps_attacking_zone",
+                "agent_steps_adj_teammate",
+                "agent_steps_adj_opponent",
                 "agent_blocks_laid",
                 "agent_blocks_mined",
                 "agent_blocks_laid_distance_from_own_flag",
-                "agent_blocks_laid_distance_from_opp_flag"
+                "agent_blocks_laid_distance_from_opp_flag",
     ]
 
     plt_pos = {
@@ -97,7 +101,9 @@ def create_plots(run_dir,
             7: (2, 1),
             8: (2, 2),
             9: (3, 0),
-            10: (3, 1)
+            10: (3, 1),
+            11: (3, 2),
+            12: (4, 0)
     }
 
     agent_type_labels = {
@@ -105,12 +111,6 @@ def create_plots(run_dir,
         1: 'Guardian',
         2: 'Vaulter',
         3: 'Miner'
-    }
-
-    metric_labels1 = {
-        0: 'Team ',
-        1: 'Team ',
-        2: 'Agent '
     }
 
     metric_labels2 = {
@@ -121,28 +121,17 @@ def create_plots(run_dir,
         4: "flag dispossessions",
         5: "steps defending zone",
         6: "steps attacking zone",
-        7: "blocks laid",
-        8: "blocks mined",
-        9: "blocks laid dist. own flag",
-        10: "blocks laid dist. opp flag"
+        7: "steps adj. teammate",
+        8: "steps adj. opponent",
+        9: "blocks laid",
+        10: "blocks mined",
+        11: "blocks laid dist. own flag",
+        12: "blocks laid dist. opp flag"
     }
 
     team_colours = {
         0: 'dodgerblue',
         1: 'red'
-    }
-
-    agent_colours = {
-        0: '#f4a460',
-        1: '#228b22',
-        2: '#9370db',
-        3: '#ff00ff',
-        4: '#6495ed',
-        5: '#ffff00',
-        6: '#006400',
-        7: '#00008b',
-        8: '#b03060',
-        9: '#ff0000',
     }
 
     agent_colours = {
@@ -172,7 +161,7 @@ def create_plots(run_dir,
     # plt.show()
 
     team_idxs = ['0', '1'] if not time_capsules[0].symmetric_teams else ['0']
-    fig, ax = plt.subplots(nrows=4, ncols=3, figsize=(10, 10))
+    fig, ax = plt.subplots(nrows=5, ncols=3, figsize=(10, 10))
     for i, metric in enumerate(team_metrics):
         ax[plt_pos[i]].set_title(metric_labels2[i])
         for team_idx in team_idxs:
@@ -201,15 +190,15 @@ def create_plots(run_dir,
                        loc='upper left', 
                        ncol=5,
                        title='legend')
-        if i == 11:
-            ax[plt_pos[i]].set_visible(False)
+        # if i == 11:
+        #     ax[plt_pos[i]].set_visible(False)
     fig.tight_layout()
     plt.show()
 
     # Plot agent metrics
     agent_types_env = time_capsules[0].agent_types
     agent_teams = time_capsules[0].agent_teams
-    fig, ax = plt.subplots(nrows=4, ncols=3, figsize=(10, 10))
+    fig, ax = plt.subplots(nrows=5, ncols=3, figsize=(10, 10))
     for i, metric in enumerate(agent_metrics):
         ax[plt_pos[i]].set_title(metric_labels2[i])
         for agent_indiv_idx in time_capsules[0].metlog.agent_indiv_idxs:
@@ -242,8 +231,8 @@ def create_plots(run_dir,
                        loc='upper left', 
                        ncol=5,
                        title='legend')
-        if i == 11:
-            ax[plt_pos[i]].set_visible(False)
+        # if i == 11:
+        #     ax[plt_pos[i]].set_visible(False)
     fig.tight_layout()
     plt.show()
 
