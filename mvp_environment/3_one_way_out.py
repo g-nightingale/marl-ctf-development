@@ -10,7 +10,7 @@ class TrainingConfig():
         self.use_wandb_ppo = False
         self.seed = 42
         self.checkpoint_frequency = 10
-        self.number_of_metaruns = 10
+        self.number_of_metaruns = 5
         self.device = 'cpu'
 
         #---------- Self-play config
@@ -32,9 +32,9 @@ class TrainingConfig():
         self.env_config = {
             'GRID_SIZE':11,
             'AGENT_CONFIG':{
-                0: {'team':0, 'type':3},
+                0: {'team':0, 'type':0},
                 1: {'team':1, 'type':0},
-                2: {'team':0, 'type':0},
+                2: {'team':0, 'type':3},
                 3: {'team':1, 'type':0},
                 # 4: {'team':0, 'type':2},
                 # 5: {'team':1, 'type':2},

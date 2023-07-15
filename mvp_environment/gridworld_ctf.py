@@ -1136,11 +1136,11 @@ class GridworldCtf:
 
                 # Red agent has flag
                 if ((i, j) == self.FLAG_POSITIONS[0] and teams_with_flag[1] == 1):
-                    img_idx = 113
+                    img_idx = 112
                 
                 # Blue agent has flag
                 if ((i, j) == self.FLAG_POSITIONS[1] and teams_with_flag[0] == 1):
-                    img_idx = 114
+                    img_idx = 113
 
                 # Render agent with flag
                 if (i, j) in agent_positions_reversed:

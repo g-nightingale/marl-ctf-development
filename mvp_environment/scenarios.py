@@ -82,7 +82,7 @@ class CtfScenarios:
     }
 
     the_fence = {
-        'SCENARIO_NAME': 'The Fence Easy',
+        'SCENARIO_NAME': 'The Fence',
         'GRID_SIZE': 11,        
         'FLIP_AXIS': 0,
         # Team level config
@@ -116,7 +116,7 @@ class CtfScenarios:
     }
 
     jailbreak = {
-        'SCENARIO_NAME': 'The Big Fence',
+        'SCENARIO_NAME': 'Jailbreak',
         'GRID_SIZE': 11,        
         'FLIP_AXIS': None,
         # Team level config
@@ -185,15 +185,14 @@ class CtfScenarios:
         },
         'BLOCK_TILE_SLICES' : [
             (slice(0, 3), 6),
+            (slice(4, 7), 6),
             (slice(8, 11), 6),
-            (5, slice(0, 3)),
             (5, slice(7, 11)),
         ],
         'DESTRUCTIBLE_TILE_SLICES' : [
-            (slice(0, 3), 5),
-            (slice(8, 11), 5),
-            (4, slice(7, 11)),
-            (6, slice(7, 11)),
+            (5, slice(0, 3)),
+            (4, slice(7, 10)),
+            (6, slice(7, 10)),
         ]
     }
 
