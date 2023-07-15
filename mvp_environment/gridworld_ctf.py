@@ -224,7 +224,8 @@ class GridworldCtf:
         self.TAG_PROBABILITY = 0.75
 
         # Vaulter hitpoint cost to make a jump
-        self.VAULT_HP_COST = 1.25
+        self.VAULT_HP_COST = 0.5
+        self.VAULT_MIN_HP = 2.5
 
         # Agent flag capture types - types that can capture the flag
         self.AGENT_FLAG_CAPTURE_TYPES = [0, 1, 2, 3]
@@ -642,7 +643,7 @@ class GridworldCtf:
         return self.grid[new_pos] == self.OPEN_TILE \
                 and ((action <= 3) 
                      or (action >=5 and self.AGENT_TYPES[agent_idx] == 2 
-                         and self.agent_hp[agent_idx] > self.VAULT_HP_COST))
+                         and (self.agent_hp[agent_idx] - self.VAULT_HP_COST) > self.VAULT_MIN_HP))
     
     def update_vaulter_hp(self, agent_idx, action):
         """
