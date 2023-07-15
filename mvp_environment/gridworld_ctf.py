@@ -243,14 +243,13 @@ class GridworldCtf:
         self.BLOCK_TILE = 1
         self.DESTRUCTIBLE_TILE1 = 2
         self.DESTRUCTIBLE_TILE2 = 3
-        self.DESTRUCTIBLE_TILE3 = 4
 
         # Tile values for each agent type by team
         self.AGENT_TYPE_TILE_MAP = {
-            0: {0:5, 1:9},
-            1: {0:6, 1:10},
-            2: {0:7, 1:11},
-            3: {0:8, 1:12},
+            0: {0:4, 1:8},
+            1: {0:5, 1:9},
+            2: {0:6, 1:10},
+            3: {0:7, 1:11},
         }
 
         # Derive AGENT_TILE_MAP from AGENT_TYPE_TILE_MAP and AGENT_CONFIG
@@ -258,31 +257,30 @@ class GridworldCtf:
 
         # Tile values for flags
         self.FLAG_TILE_MAP = {
-            0: 13,
-            1: 14
+            0: 12,
+            1: 13
         }
 
         # Standardised tiles
         self.STD_BLOCK_TILE = 1
         self.STD_DESTRUCTIBLE_TILE1 = 2
         self.STD_DESTRUCTIBLE_TILE2 = 3
-        self.STD_DESTRUCTIBLE_TILE3 = 4
 
         self.STD_AGENT_TYPE_TILES_OWN = {
-            0: 5,
-            1: 6,
-            2: 7,
-            3: 8,
+            0: 4,
+            1: 5,
+            2: 6,
+            3: 7,
         }
         self.STD_AGENT_TYPE_TILES_OPP = {
-            0: 9,
-            1: 10,
-            2: 11,
-            3: 12,
+            0: 8,
+            1: 9,
+            2: 10,
+            3: 11,
         }
 
-        self.STD_OWN_FLAG_TILE = 13
-        self.STD_OPP_FLAG_TILE = 14
+        self.STD_OWN_FLAG_TILE = 12
+        self.STD_OPP_FLAG_TILE = 13
 
         #----------------------------------------------------------------------------------
         # Colour map for rendering environment
@@ -294,18 +292,16 @@ class GridworldCtf:
                     1: np.array([0, 0, 0]), # Block tile
                     2: np.array([32, 32, 32]), # Destructible tile 1
                     3: np.array([64, 64, 64]), # Destructible tile 2
-                    4: np.array([96, 96, 96]), # Destructible tile 3
-                    5: np.array([102, 178, 255]), # Blue team agent type 1
-                    6: np.array([0, 128, 255]), # Blue team agent type 2
-                    7: np.array([153, 204, 255]), # Blue team agent type 3
-                    8: np.array([153, 210, 255]), # Blue team agent type 4
-                    9: np.array([255, 102, 102]), # Red team agent type 1
-                    10: np.array([255, 51, 51]), # Red team agent type 2
-                    11: np.array([255, 153, 153]), # Red team agent type 3
-                    12: np.array([255, 163, 153]), # Red team agent type 4
-                    13: np.array([0, 0, 153]), # Blue team flag
-                    14: np.array([153, 0, 0]), # Red team flag
-                    15: np.array([153, 51, 255]) # purple
+                    4: np.array([102, 178, 255]), # Blue team agent type 1
+                    5: np.array([0, 128, 255]), # Blue team agent type 2
+                    6: np.array([153, 204, 255]), # Blue team agent type 3
+                    7: np.array([153, 210, 255]), # Blue team agent type 4
+                    8: np.array([255, 102, 102]), # Red team agent type 1
+                    9: np.array([255, 51, 51]), # Red team agent type 2
+                    10: np.array([255, 153, 153]), # Red team agent type 3
+                    11: np.array([255, 163, 153]), # Red team agent type 4
+                    12: np.array([0, 0, 153]), # Blue team flag
+                    13: np.array([153, 0, 0]), # Red team flag
         }  
 
 
@@ -320,27 +316,26 @@ class GridworldCtf:
             1: Image.open(IMAGE_FOLDER_PATH + 'tile1.png'),
             2: Image.open(IMAGE_FOLDER_PATH + 'tile2.png'),
             3: Image.open(IMAGE_FOLDER_PATH + 'tile3.png'),
-            4: Image.open(IMAGE_FOLDER_PATH + 'tile4.png'),
-            5: Image.open(IMAGE_FOLDER_PATH + 'scout_blue.png'),
-            6: Image.open(IMAGE_FOLDER_PATH + 'guardian_blue.png'),
-            7: Image.open(IMAGE_FOLDER_PATH + 'vaulter_blue.png'),
-            8: Image.open(IMAGE_FOLDER_PATH + 'miner_blue.png'),
-            9: Image.open(IMAGE_FOLDER_PATH + 'scout_red.png'),
-            10: Image.open(IMAGE_FOLDER_PATH + 'guardian_red.png'),
-            11: Image.open(IMAGE_FOLDER_PATH + 'vaulter_red.png'),
-            12: Image.open(IMAGE_FOLDER_PATH + 'miner_red.png'),
-            13: Image.open(IMAGE_FOLDER_PATH + 'flag_blue.png'),
-            14: Image.open(IMAGE_FOLDER_PATH + 'flag_red.png'),
-            105: Image.open(IMAGE_FOLDER_PATH + 'scout_blue_flag.png'),
-            106: Image.open(IMAGE_FOLDER_PATH + 'guardian_blue_flag.png'),
-            107: Image.open(IMAGE_FOLDER_PATH + 'vaulter_blue_flag.png'),
-            108: Image.open(IMAGE_FOLDER_PATH + 'miner_blue_flag.png'),
-            109: Image.open(IMAGE_FOLDER_PATH + 'scout_red_flag.png'),
-            110: Image.open(IMAGE_FOLDER_PATH + 'guardian_red_flag.png'),
-            111: Image.open(IMAGE_FOLDER_PATH + 'vaulter_red_flag.png'),
-            112: Image.open(IMAGE_FOLDER_PATH + 'miner_red_flag.png'),
-            113: Image.open(IMAGE_FOLDER_PATH + 'flag_blue_empty.png'),
-            114: Image.open(IMAGE_FOLDER_PATH + 'flag_red_empty.png'),
+            4: Image.open(IMAGE_FOLDER_PATH + 'scout_blue.png'),
+            5: Image.open(IMAGE_FOLDER_PATH + 'guardian_blue.png'),
+            6: Image.open(IMAGE_FOLDER_PATH + 'vaulter_blue.png'),
+            7: Image.open(IMAGE_FOLDER_PATH + 'miner_blue.png'),
+            8: Image.open(IMAGE_FOLDER_PATH + 'scout_red.png'),
+            9: Image.open(IMAGE_FOLDER_PATH + 'guardian_red.png'),
+            10: Image.open(IMAGE_FOLDER_PATH + 'vaulter_red.png'),
+            11: Image.open(IMAGE_FOLDER_PATH + 'miner_red.png'),
+            12: Image.open(IMAGE_FOLDER_PATH + 'flag_blue.png'),
+            13: Image.open(IMAGE_FOLDER_PATH + 'flag_red.png'),
+            104: Image.open(IMAGE_FOLDER_PATH + 'scout_blue_flag.png'),
+            105: Image.open(IMAGE_FOLDER_PATH + 'guardian_blue_flag.png'),
+            106: Image.open(IMAGE_FOLDER_PATH + 'vaulter_blue_flag.png'),
+            107: Image.open(IMAGE_FOLDER_PATH + 'miner_blue_flag.png'),
+            108: Image.open(IMAGE_FOLDER_PATH + 'scout_red_flag.png'),
+            109: Image.open(IMAGE_FOLDER_PATH + 'guardian_red_flag.png'),
+            110: Image.open(IMAGE_FOLDER_PATH + 'vaulter_red_flag.png'),
+            111: Image.open(IMAGE_FOLDER_PATH + 'miner_red_flag.png'),
+            112: Image.open(IMAGE_FOLDER_PATH + 'flag_blue_empty.png'),
+            113: Image.open(IMAGE_FOLDER_PATH + 'flag_red_empty.png'),
         }
 
         # Reset the environment
@@ -492,7 +487,7 @@ class GridworldCtf:
         """
         
         tiles_list = [x for x in np.unique(self.grid) if x!=0]
-        tiles_list.extend([self.DESTRUCTIBLE_TILE2, self.DESTRUCTIBLE_TILE3]) if self.DESTRUCTIBLE_TILE1 in tiles_list and 3 in self.AGENT_TYPES.values() else None
+        tiles_list.extend([self.DESTRUCTIBLE_TILE2]) if self.DESTRUCTIBLE_TILE1 in tiles_list and 3 in self.AGENT_TYPES.values() else None
         tiles_list += [self.STD_AGENT_TYPE_TILES_OPP[agent_type] for agent_type in self.AGENT_TYPES.values()]
         tiles_list = list(set(tiles_list))
 
@@ -670,8 +665,7 @@ class GridworldCtf:
         """
         return self.AGENT_TYPES[agent_idx] == 3 \
                 and (self.grid[new_pos] == self.DESTRUCTIBLE_TILE1 \
-                or self.grid[new_pos] == self.DESTRUCTIBLE_TILE2 \
-                or self.grid[new_pos] == self.DESTRUCTIBLE_TILE3)
+                or self.grid[new_pos] == self.DESTRUCTIBLE_TILE2)
     
     def mine_block(self, agent_idx, new_pos):
         """
@@ -680,8 +674,6 @@ class GridworldCtf:
         if self.grid[new_pos] == self.DESTRUCTIBLE_TILE1:
             self.grid[new_pos] = self.DESTRUCTIBLE_TILE2
         elif self.grid[new_pos] == self.DESTRUCTIBLE_TILE2:
-            self.grid[new_pos] = self.DESTRUCTIBLE_TILE3
-        elif self.grid[new_pos] == self.DESTRUCTIBLE_TILE3:
             self.grid[new_pos] = self.OPEN_TILE
             if self.block_inventory[agent_idx] < self.MAX_AGENT_BLOCKS:
                 self.block_inventory[agent_idx] += self.BLOCK_PICKUP_VALUE
@@ -1030,15 +1022,11 @@ class GridworldCtf:
         Return local metadata from the environment.
         """
 
-        SCORE_CEILING = 100
         EPSILON = 1
         
         # Get game state data
         game_percent_complete = self.env_step_count / self.GAME_STEPS
-        # team_margin_pct = (self.metrics['team_flag_captures'][self.AGENT_TEAMS[agent_idx]] - self.metrics['team_flag_captures'][1 - self.AGENT_TEAMS[agent_idx]]) / SCORE_CEILING
         team_margin_pct = (self.metrics['team_flag_captures'][self.AGENT_TEAMS[agent_idx]] + EPSILON) / (self.metrics['team_flag_captures'][1 - self.AGENT_TEAMS[agent_idx]] + EPSILON)
-        # scores = np.array(list(self.metrics['team_flag_captures'].values()))
-        # teams_max_score_pct = (self.metrics['team_flag_captures'][self.AGENT_TEAMS[agent_idx]] + EPSILON) / (max(scores) + EPSILON) * (max(scores) > 0)
 
         # Get agent hitpoints
         agent_hp = np.zeros(self.N_AGENTS, dtype=np.uint8)
