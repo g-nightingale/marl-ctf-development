@@ -407,9 +407,6 @@ class GridworldCtf:
         # Agent hitpoints
         self.agent_hp = {kv[0]:self.AGENT_TYPE_HP[kv[1]] for kv in self.AGENT_TYPES.items()}
 
-        # Agent vault power
-        self.block_inventory = {kv[0]:0 if kv[1]==2 else 0 for kv in self.AGENT_TYPES.items()}
-
         # Agent block inventory
         self.block_inventory = {kv[0]:0 if kv[1]==3 else 0 for kv in self.AGENT_TYPES.items()}
 
@@ -660,11 +657,11 @@ class GridworldCtf:
                 and self.block_inventory[agent_idx] > 0 \
                 and self.grid[new_pos] == self.OPEN_TILE
     
-    def can_mine_blocks(self, agent_idx, new_pos):
+    def can_mine_blocks(self, agent_idx, action, new_pos):
         """
         Check conditions for mining blocks.
         """
-        return self.AGENT_TYPES[agent_idx] == 3 \
+        return action < 5 and self.AGENT_TYPES[agent_idx] == 3 \
                 and (self.grid[new_pos] == self.DESTRUCTIBLE_TILE1 \
                 or self.grid[new_pos] == self.DESTRUCTIBLE_TILE2)
     
@@ -711,7 +708,7 @@ class GridworldCtf:
                 self.update_vaulter_hp(agent_idx, action)
             elif self.can_add_blocks(agent_idx, action, new_pos):
                 self.add_block(new_pos, agent_idx)
-            elif self.can_mine_blocks(agent_idx, new_pos):
+            elif self.can_mine_blocks(agent_idx, action, new_pos):
                 self.mine_block(agent_idx, new_pos)
 
         # Update agent position

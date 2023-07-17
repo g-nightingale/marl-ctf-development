@@ -10,7 +10,7 @@ class TrainingConfig():
         self.use_wandb_ppo = False
         self.seed = 42
         self.checkpoint_frequency = 10
-        self.number_of_metaruns = 10
+        self.number_of_metaruns = 5
         self.device = 'cpu'
 
         #---------- Self-play config

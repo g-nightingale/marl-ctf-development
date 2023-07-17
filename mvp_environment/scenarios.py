@@ -185,14 +185,13 @@ class CtfScenarios:
         },
         'BLOCK_TILE_SLICES' : [
             (slice(0, 3), 6),
-            (slice(4, 7), 6),
             (slice(8, 11), 6),
             (5, slice(7, 11)),
         ],
         'DESTRUCTIBLE_TILE_SLICES' : [
             (5, slice(0, 3)),
-            (4, slice(7, 10)),
-            (6, slice(7, 10)),
+            (4, slice(7, 11)),
+            (6, slice(7, 111)),
         ]
     }
 
