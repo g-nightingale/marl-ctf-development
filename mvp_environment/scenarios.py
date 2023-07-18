@@ -135,10 +135,10 @@ class CtfScenarios:
         },
         # Starting positions for each agent
         'AGENT_STARTING_POSITIONS' : {
-            0: (2, 8),
-            1: (8, 2),
-            2: (0, 5),
-            3: (10, 5),
+            0: (0, 5),
+            1: (10, 5),
+            2: (2, 8),
+            3: (8, 2),
             4: (2, 9),
             5: (8, 1),
         },
@@ -194,5 +194,49 @@ class CtfScenarios:
             (6, slice(7, 111)),
         ]
     }
+
+    keyhole = {
+        'SCENARIO_NAME': 'Keyhole',
+        'GRID_SIZE': 11,        
+        'FLIP_AXIS': 0,
+        # Team level config
+        'FLAG_POSITIONS' : {
+            0: (1, 1),
+            1: (9, 1)
+        },
+        # Capture positions for each team
+        'CAPTURE_POSITIONS' : {
+            0: (1, 1),
+            1: (9, 1)
+        },
+        'SPAWN_POSITIONS' : {
+            0: (1, 9),
+            1: (9, 9)
+        },
+        # Starting positions for each agent
+        'AGENT_STARTING_POSITIONS' : {
+            0: (2, 8),
+            1: (8, 8),
+            2: (2, 9),
+            3: (8, 9),
+            4: (2, 10),
+            5: (8, 10),
+        },
+        'BLOCK_TILE_SLICES' : [
+            (5, slice(9, 11)),
+            (5, slice(0, 3)),
+            (slice(4, 7), 0),
+            (slice(4, 7), 3),
+            (4, slice(9, 11)),
+            (6, slice(9, 11)),
+        ],
+        'DESTRUCTIBLE_TILE_SLICES' : [
+            (slice(0, 3), 6),
+            (slice(8, 11), 6),
+            (4, slice(7, 9)),
+            (6, slice(7, 9)),
+            (5, 8),
+        ]
+    }    
 
        
