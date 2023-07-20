@@ -1,5 +1,6 @@
 # Plot rewards
 import matplotlib.pyplot as plt
+import matplotlib.ticker as ticker
 import seaborn as sns
 import numpy as np
 import pickle 
@@ -7,7 +8,9 @@ import torch
 import os
 import pickle
 import imageio
-
+from scipy import stats
+import pandas as pd
+from collections import defaultdict
 
 class TrainingConfig():
     def __init__(self):
@@ -45,11 +48,24 @@ def get_agents(run_dir,
     return env_config, agent1, agent2
 
 def create_plots(run_dir,
-                file_names):
+                file_names,
+                include_block_tile_metrics=True):
     """
     Create primary plots for analysis.
     """
-    
+
+    if include_block_tile_metrics:
+        NROWS = 5
+        NCOLS = 3
+        FIGSIZE = (10, 10)
+        N_METRICS = 13
+    else:
+        NROWS = 3
+        NCOLS = 3
+        FIGSIZE = (10, 6)
+        N_METRICS = 9
+
+    # Load data
     time_capsules = []
     for file_name in file_names:
         file_path = run_dir + file_name
@@ -161,8 +177,8 @@ def create_plots(run_dir,
     # plt.show()
 
     team_idxs = ['0', '1'] if not time_capsules[0].symmetric_teams else ['0']
-    fig, ax = plt.subplots(nrows=5, ncols=3, figsize=(10, 10))
-    for i, metric in enumerate(team_metrics):
+    fig, ax = plt.subplots(nrows=NROWS, ncols=NCOLS, figsize=FIGSIZE)
+    for i, metric in enumerate(team_metrics[:N_METRICS]):
         ax[plt_pos[i]].set_title(metric_labels2[i])
         for team_idx in team_idxs:
             temp_list = []
@@ -184,32 +200,33 @@ def create_plots(run_dir,
                                         facecolor=team_colours[int(team_idx)])
         ax[plt_pos[i]].set_ylabel(metric_labels2[i])
         ax[plt_pos[i]].grid(linestyle='dashed', alpha=0.5)
+        ax[plt_pos[i]].xaxis.set_major_locator(ticker.MultipleLocator(10))
         if i==0:
-            # ax[plt_pos[i]].legend()
             fig.legend(bbox_to_anchor=[0.1, -0.01], 
                        loc='upper left', 
                        ncol=5,
                        title='legend')
-        # if i == 11:
-        #     ax[plt_pos[i]].set_visible(False)
+    if include_block_tile_metrics:
+        ax[(4, 1)].set_visible(False)
+        ax[(4, 2)].set_visible(False)
     fig.tight_layout()
     plt.show()
 
     # Plot agent metrics
     agent_types_env = time_capsules[0].agent_types
     agent_teams = time_capsules[0].agent_teams
-    fig, ax = plt.subplots(nrows=5, ncols=3, figsize=(10, 10))
-    for i, metric in enumerate(agent_metrics):
+    fig, ax = plt.subplots(nrows=NROWS, ncols=NCOLS, figsize=FIGSIZE)
+    for i, metric in enumerate(agent_metrics[:N_METRICS]):
         ax[plt_pos[i]].set_title(metric_labels2[i])
         for agent_indiv_idx in time_capsules[0].metlog.agent_indiv_idxs:
             temp_list = []
             for time_capsule in time_capsules:
                 for agent_idx in time_capsule.metlog.metrics.keys():
-                    temp_list.append(time_capsule.metlog.metrics[agent_idx][metric][agent_indiv_idx])
+                    # Hack to fix bug in metrics logger -> metrics for all agents are logged for both teams, so need to de-dupe
+                    if int(agent_idx[1]) == agent_teams[agent_indiv_idx]:
+                        temp_list.append(time_capsule.metlog.metrics[agent_idx][metric][agent_indiv_idx])
                 agent_type_label = f'Team {agent_teams[agent_indiv_idx] + 1}: '
                 agent_type_label += agent_type_labels[agent_types_env[agent_indiv_idx]]
-            # ax[plt_pos[i]].plot(np.mean(temp_list, axis=0), label=agent_type_label, color=agent_colours[agent_indiv_idx])
-            # ax[plt_pos[i]].plot(np.mean(temp_list, axis=0), label=agent_type_label)
 
             mean = np.mean(temp_list, axis=0)
             std = np.std(temp_list, axis=0)
@@ -225,14 +242,15 @@ def create_plots(run_dir,
                                         facecolor=agent_colours[agent_indiv_idx])
         ax[plt_pos[i]].set_ylabel(metric_labels2[i])
         ax[plt_pos[i]].grid(linestyle='dashed', alpha=0.5)
+        ax[plt_pos[i]].xaxis.set_major_locator(ticker.MultipleLocator(10))
         if i==0:
-            # ax[plt_pos[i]].legend()
             fig.legend(bbox_to_anchor=[0.1, -0.01], 
                        loc='upper left', 
                        ncol=5,
                        title='legend')
-        # if i == 11:
-        #     ax[plt_pos[i]].set_visible(False)
+    if include_block_tile_metrics:
+        ax[(4, 1)].set_visible(False)
+        ax[(4, 2)].set_visible(False)
     fig.tight_layout()
     plt.show()
 
@@ -437,3 +455,124 @@ def winrate_heatmap(results_df):
     plt.yticks(rotation=0)
     plt.tick_params(axis='both', which='major', labelsize=10, labelbottom = False, bottom=False, top = False, labeltop=True)
     plt.show()
+
+
+def create_results_table(run_dir, file_names, idx=-1, equal_var=False):
+    """
+    Create results table.
+    """
+    
+    team_metrics = [
+                "team_flag_pickups",
+                "team_flag_captures",
+                "team_tag_count",
+                "team_respawn_tag_count",
+                "team_flag_dispossessions",
+                "team_steps_defending_zone",
+                "team_steps_attacking_zone",
+                "team_steps_adj_teammate",
+                "team_steps_adj_opponent",
+                "team_blocks_laid",
+                "team_blocks_mined",
+                "team_blocks_laid_distance_from_own_flag",
+                "team_blocks_laid_distance_from_opp_flag"
+    ]
+
+    agent_metrics = [
+                    "agent_flag_pickups",
+                    "agent_flag_captures",
+                    "agent_tag_count",
+                    "agent_respawn_tag_count",
+                    "agent_flag_dispossessions",
+                    "agent_steps_defending_zone",
+                    "agent_steps_attacking_zone",
+                    "agent_steps_adj_teammate",
+                    "agent_steps_adj_opponent",
+                    "agent_blocks_laid",
+                    "agent_blocks_mined",
+                    "agent_blocks_laid_distance_from_own_flag",
+                    "agent_blocks_laid_distance_from_opp_flag",
+    ]
+
+    # Load data from time capsules
+    time_capsules = []
+    for file_name in file_names:
+        file_path = run_dir + file_name
+        print(file_path)
+        
+        with open(file_path, 'rb') as f:
+            time_capsules.append(pickle.load(f))
+
+    # Team metrics
+    team_results = defaultdict(list)
+    team_idxs = ['0', '1'] if not time_capsules[0].symmetric_teams else ['0']
+    for i, metric in enumerate(team_metrics):
+        metric_samples = {}
+        for team_idx in team_idxs:
+            temp_list = []
+            for time_capsule in time_capsules:
+                for agent in time_capsule.metlog.metrics.keys():
+                    if agent[1] == team_idx:
+                        temp_list.append(time_capsule.metlog.metrics[agent][metric][idx])
+            metric_samples[team_idx] = temp_list
+
+        _, p_value_teams = stats.ttest_ind(metric_samples['0'], metric_samples['1'], equal_var=equal_var)   
+        team1_mean = np.mean(metric_samples['0'], axis=0)
+        team2_mean = np.mean(metric_samples['1'], axis=0)
+        team1_std = np.std(metric_samples['0'], axis=0)
+        team2_std = np.std(metric_samples['1'], axis=0)  
+
+        team_results['metric_name'].append(metric)
+        team_results['team1_mean'].append(round(team1_mean, 4))
+        team_results['team1_std'].append(round(team1_std, 4))
+        team_results['team2_mean'].append(round(team2_mean, 4))
+        team_results['team2_std'].append(round(team2_std, 4))
+        team_results['p_value'].append(round(p_value_teams, 4))
+        
+    # Agent metrics
+    agent_results_t1 = defaultdict(list)
+    agent_results_t2 = defaultdict(list)
+    agent_types_env = time_capsules[0].agent_types
+    agent_teams = time_capsules[0].agent_teams
+    for i, metric in enumerate(agent_metrics):
+        agent_samples = {}
+        for agent_indiv_idx in time_capsules[0].metlog.agent_indiv_idxs:
+            temp_list = []
+            for time_capsule in time_capsules:
+                for agent_idx in time_capsule.metlog.metrics.keys():
+                    # Hack to fix bug in metrics logger -> metrics for all agents are logged for both teams, so need to de-dupe
+                    if int(agent_idx[1]) == agent_teams[agent_indiv_idx]:
+                        temp_list.append(time_capsule.metlog.metrics[agent_idx][metric][agent_indiv_idx][idx])
+            agent_samples[agent_indiv_idx] = temp_list
+
+        _, p_value_02 = stats.ttest_ind(agent_samples[0], agent_samples[2], equal_var=equal_var)
+        _, p_value_13 = stats.ttest_ind(agent_samples[1], agent_samples[3], equal_var=equal_var)
+        agent0_mean = np.mean(agent_samples[0], axis=0)
+        agent2_mean = np.mean(agent_samples[2], axis=0)
+        agent0_std = np.std(agent_samples[0], axis=0)
+        agent2_std = np.std(agent_samples[2], axis=0)
+
+        agent_results_t1['metric_name'].append(metric)
+        agent_results_t1['agent1_mean'].append(round(agent0_mean, 2))
+        agent_results_t1['agent1_std'].append(round(agent0_std, 2))
+        agent_results_t1['agent2_mean'].append(round(agent2_mean, 2))
+        agent_results_t1['agent2_std'].append(round(agent2_std, 2))
+        agent_results_t1['p_value'].append(round(p_value_02, 4))
+        
+        agent1_mean = np.mean(agent_samples[1], axis=0)
+        agent3_mean = np.mean(agent_samples[3], axis=0)
+        agent1_std = np.std(agent_samples[1], axis=0)
+        agent3_std = np.std(agent_samples[3], axis=0)
+
+        agent_results_t2['metric_name'].append(metric)
+        agent_results_t2['agent1_mean'].append(round(agent1_mean, 2))
+        agent_results_t2['agent1_std'].append(round(agent1_std, 2))
+        agent_results_t2['agent2_mean'].append(round(agent3_mean, 2))
+        agent_results_t2['agent2_std'].append(round(agent3_std, 2))
+        agent_results_t2['p_value'].append(round(p_value_13, 4))
+
+    team_results_df = pd.DataFrame(team_results)
+    agent_results_t1_df = pd.DataFrame(agent_results_t1)
+    agent_results_t2_df = pd.DataFrame(agent_results_t2)
+
+    return team_results_df, agent_results_t1_df, agent_results_t2_df
