@@ -235,4 +235,67 @@ class CtfScenarios:
         ]
     }    
 
-       
+    arena = {
+        'SCENARIO_NAME': 'Arena',
+        'GRID_SIZE': 17,        
+        'FLIP_AXIS': None,
+        # Team level config
+        'FLAG_POSITIONS' : {
+            0: (2, 2),
+            1: (14, 14)
+        },
+        # Capture positions for each team
+        'CAPTURE_POSITIONS' : {
+            0: (2, 2),
+            1: (14, 14)
+        },
+        'SPAWN_POSITIONS' : {
+            0: (2, 13),
+            1: (13, 2),
+        },
+        # Starting positions for each agent
+        'AGENT_STARTING_POSITIONS' : {
+            0: (3, 14),
+            1: (13, 2),
+            2: (2, 13),
+            3: (14, 3),
+            4: (1, 14),
+            5: (15, 2),
+            6: (2, 15),
+            7: (14, 1),
+            8: (0, 8),
+            9: (16, 8),
+        },
+        'BLOCK_TILE_SLICES' : [
+            (5, slice(0, 4)),
+            (slice(0, 4), 5),
+            (11, slice(0, 4)),
+            (5, slice(13, 17)),
+            (slice(0, 4), 11),
+            (11, slice(13, 17)),
+            (slice(13, 17), 5),
+            (slice(13, 17), 11),
+            (slice(6, 11), 2),
+            (slice(6, 11), 14),
+            (slice(3, 6), 8),
+            (slice(11, 14), 8),
+            (8, slice(3, 6)),
+            (8, slice(11, 14)),
+
+        ],
+        'DESTRUCTIBLE_TILE_SLICES' : [
+            # Team 1 trapped agent
+            (0, 7),
+            (0, 9),
+            (1, slice(7, 10)),
+            # Team 2 trapped agent
+            (16, 7),
+            (16, 9),
+            (15, slice(7, 10)),
+            (slice(6, 8), slice(3, 5)),
+            (slice(6, 8), slice(12, 14)),
+            (slice(9, 11), slice(3, 5)),
+            (slice(9, 11), slice(12, 14))
+        ]
+    }
+

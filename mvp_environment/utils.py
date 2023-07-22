@@ -11,6 +11,8 @@ import imageio
 from scipy import stats
 import pandas as pd
 from collections import defaultdict
+import ray
+import copy
 
 class TrainingConfig():
     def __init__(self):
@@ -254,16 +256,28 @@ def create_plots(run_dir,
     fig.tight_layout()
     plt.show()
 
-def plot_heatmaps(env):
-    """
-    Plot agent heatmaps.
-    """
-    plt_idxs = {
-        0: (0, 0),
-        1: (0, 1),
-        2: (1, 0),
-        3: (1, 1)
-    }
+@ray.remote
+def ray_duel(env, agent, opponent, idxs, return_result, device):
+    return duel(env, agent, opponent, idxs, return_result, device)
+
+def plot_heatmaps(env, agent1, agent2, n_duels=100):
+
+    ray.shutdown() 
+    ray.init()
+
+    async_results = []
+    for i in range(n_duels):
+        async_result = ray_duel.remote(env, agent1, agent2, (0, 1), return_result=False, device='cpu')
+        async_results.append(async_result)
+
+    duel_results = ray.get(async_results)
+
+    for i, d in enumerate(duel_results):
+        if i == 0:
+            visitation_map = copy.deepcopy(d[2]['agent_visitation_maps'])
+        else:
+            for k in visitation_map.keys():
+                visitation_map[k] += d[2]['agent_visitation_maps'][k]
 
     agent_type_labels = {
         0: 'Scout',
@@ -273,20 +287,22 @@ def plot_heatmaps(env):
     }
 
     agent_types_env = env.AGENT_TYPES
-    agent_teams = env.AGENT_TEAMS
+    agent_teams = dict(sorted(env.AGENT_TEAMS.items(), key=lambda item: item[1]))
 
-    fig, ax = plt.subplots(nrows=2, ncols=2, figsize=(8, 7))
-    for agent_indiv_idx in range(4):
+    fig, ax = plt.subplots(nrows=1, ncols=4, figsize=(10, 2.8))
+    for i, agent_indiv_idx in enumerate(agent_teams.keys()):
         plt_title = f'Team {agent_teams[agent_indiv_idx]+1}: '
         plt_title += agent_type_labels[agent_types_env[agent_indiv_idx]]
 
-        ax[plt_idxs[agent_indiv_idx]].set_title(plt_title)
-        vmap = env.metrics['agent_visitation_maps'][agent_indiv_idx]
-        sns.heatmap(vmap, annot=False, cmap='magma', ax=ax[plt_idxs[agent_indiv_idx]], cbar=False)
-        ax[plt_idxs[agent_indiv_idx]].get_xaxis().set_visible(False)
-        ax[plt_idxs[agent_indiv_idx]].get_yaxis().set_visible(False)
+        ax[i].set_title(plt_title)
+        vmap = visitation_map[agent_indiv_idx]
+        sns.heatmap(vmap, annot=False, cmap='magma', ax=ax[i], cbar=False)
+        ax[i].get_xaxis().set_visible(False)
+        ax[i].get_yaxis().set_visible(False)
     fig.tight_layout()
     plt.show()
+
+    return visitation_map
 
 def create_gif(env, 
                 agent, 
