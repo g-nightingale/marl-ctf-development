@@ -1,5 +1,5 @@
 # Multi-Agent Reinforcement Learning Capture the Flag
-This repository contains the code used in my study on agent specialisation in heterogenous agents, using reinforcement learning.
+This repository contains the code used in my study on agent specialisation with heterogeneous agents, using reinforcement learning.
 
 ### The Important Stuff
 The key files in this repository are:
