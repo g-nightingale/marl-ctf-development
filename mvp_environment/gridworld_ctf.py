@@ -17,7 +17,7 @@ class GridworldCtf:
     """
 
     def __init__(self, 
-                AGENT_CONFIG = {
+                AGENT_CONFIG={
                     0: {'team':0, 'type':0},
                     1: {'team':1, 'type':0},
                 },
@@ -31,7 +31,24 @@ class GridworldCtf:
                 USE_ADJUSTED_REWARDS=False,
                 MAX_BLOCK_TILE_PCT=0.2,
                 LOG_METRICS=True,
-                MAP_SYMMETRY_CHECK=True
+                MAP_SYMMETRY_CHECK=True,
+                AGENT_TYPE_HP={
+                    0: 8,
+                    1: 6,
+                    2: 4,
+                    3: 4
+                },
+                AGENT_HP_HEALING_PER_STEP=0.25,
+                AGENT_TYPE_DAMAGE={
+                    0: 1,
+                    1: 0.5,
+                    2: 1,
+                    3: 1
+                },
+                TAG_PROBABILITY=0.75,
+                GUARDIAN_DAMAGE_MULTIPLIER=5.0,
+                VAULT_HP_COST=0.5,
+                VAULT_MIN_HP=2.5
                 ):
 
 
@@ -189,23 +206,13 @@ class GridworldCtf:
         self.AGENT_TYPES = {k:self.AGENT_CONFIG[k]['type'] for k in self.AGENT_CONFIG.keys()}
 
         # Agent hitpoints
-        self.AGENT_TYPE_HP = {
-            0: 8,
-            1: 6,
-            2: 4,
-            3: 4
-        }
+        self.AGENT_TYPE_HP = AGENT_TYPE_HP
 
         # HP healing per step
-        self.AGENT_HP_HEALING_PER_STEP = 0.25
+        self.AGENT_HP_HEALING_PER_STEP = AGENT_HP_HEALING_PER_STEP
 
         # Damage dealt by each agent type
-        self.AGENT_TYPE_DAMAGE = {
-            0: 1,
-            1: 0.5,
-            2: 1,
-            3: 1
-        }
+        self.AGENT_TYPE_DAMAGE = AGENT_TYPE_DAMAGE
 
         # Action masks
         self.AGENT_TYPE_ACTION_MASK = {
@@ -218,14 +225,14 @@ class GridworldCtf:
         # Distance at which guardian has defense capability
         self.GUARDIAN_DEFENSE_DISTANCE = 3
         self.GUARDIAN_TAGGING_RANGE = 1
-        self.GUARDIAN_DAMAGE_MULTIPLIER = 5.0
+        self.GUARDIAN_DAMAGE_MULTIPLIER = GUARDIAN_DAMAGE_MULTIPLIER
 
-        # Probability of a successful tag for guardian agent
-        self.TAG_PROBABILITY = 0.75
+        # Probability of a successful tag
+        self.TAG_PROBABILITY = TAG_PROBABILITY
 
         # Vaulter hitpoint cost to make a jump
-        self.VAULT_HP_COST = 0.5
-        self.VAULT_MIN_HP = 2.5
+        self.VAULT_HP_COST = VAULT_HP_COST
+        self.VAULT_MIN_HP = VAULT_MIN_HP
 
         # Agent flag capture types - types that can capture the flag
         self.AGENT_FLAG_CAPTURE_TYPES = [0, 1, 2, 3]
@@ -655,7 +662,9 @@ class GridworldCtf:
         """
         return action >= 5 and self.AGENT_TYPES[agent_idx] == 3 \
                 and self.block_inventory[agent_idx] > 0 \
-                and self.grid[new_pos] == self.OPEN_TILE
+                and self.grid[new_pos] == self.OPEN_TILE \
+                and self.max_dim_distance_to_xy(new_pos, self.SPAWN_POSITIONS[self.AGENT_TEAMS[agent_idx]]) > 1 \
+                and self.max_dim_distance_to_xy(new_pos, self.SPAWN_POSITIONS[1 - self.AGENT_TEAMS[agent_idx]]) > 1
     
     def can_mine_blocks(self, agent_idx, action, new_pos):
         """

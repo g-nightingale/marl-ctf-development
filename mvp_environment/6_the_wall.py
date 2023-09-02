@@ -1,0 +1,91 @@
+from league_training import LeagueTrainer
+from scenarios import CtfScenarios as scn
+
+class TrainingConfig():
+    def __init__(self):
+        #---------- Overall config
+        self.wandb_project_name = "MARL-CTF-Test"
+        self.exp_name = "6_the_wall"
+        self.use_wandb_selfplay = False
+        self.use_wandb_ppo = False
+        self.seed = 42
+        self.checkpoint_frequency = 10
+        self.number_of_metaruns = 5
+        self.device = 'cpu'
+        self.force_two_teams = False
+
+        #---------- Self-play config
+        self.number_of_iterations = 50
+        self.number_of_duels = 30
+        self.min_learning_rounds = 1
+        self.n_main_agents = 1
+        self.n_coaching_agents = 0
+        self.n_league_agents = 0
+        self.n_historical_agents = 0
+        self.min_agent_winrate = 0.4
+        self.min_historical_agent_winrate = 0.0
+        self.min_agent_winrate_for_promotion = 0.6
+        self.min_agent_iterations_for_replacement = 2
+        self.inference_interval = 1
+        self.historical_update_interval = 5
+
+        #---------- Environment config
+        self.env_config = {
+            'GRID_SIZE':13,
+            'AGENT_CONFIG':{
+                0: {'team':0, 'type':3},
+                1: {'team':1, 'type':3},
+                2: {'team':0, 'type':2},
+                3: {'team':1, 'type':2},
+                4: {'team':0, 'type':1},
+                5: {'team':1, 'type':0},
+            },
+            'SCENARIO': scn.the_wall,
+            'GAME_STEPS': 500,
+            'USE_ADJUSTED_REWARDS': True,
+            'MAP_SYMMETRY_CHECK': False,
+            'AGENT_TYPE_HP': {
+                0: 10,
+                1: 8,
+                2: 8,
+                3: 7
+            },
+            'AGENT_TYPE_DAMAGE': {
+                0: 1,
+                1: 0.5,
+                2: 0.5,
+                3: 1
+            },
+            'GUARDIAN_DAMAGE_MULTIPLIER': 5.0,
+            'VAULT_HP_COST': 1.25
+        }
+
+        #---------- PPO Config
+        self.n_actions = 9
+        self.learning_rate = 0.0003
+        self.total_timesteps = 12500
+        self.torch_deterministic = True
+        self.cuda = True
+        self.wandb_entity = None
+        self.parallel_rollouts = True
+        self.num_envs = 8
+        self.num_steps = 500
+        self.anneal_lr = False
+        self.gae = True
+        self.gamma = 0.999
+        self.gae_lambda = 0.95
+        self.num_minibatches = 4
+        self.update_epochs = 4
+        self.norm_adv = False
+        self.clip_coef = 0.2
+        self.clip_vloss = True
+        self.ent_coef = 0.01
+        self.vf_coef = 0.5
+        self.max_grad_norm = 0.5
+        self.target_kl = None
+
+
+if __name__ == '__main__':
+    args = TrainingConfig()
+    league_trainer = LeagueTrainer(args)
+    league_trainer.train_league()

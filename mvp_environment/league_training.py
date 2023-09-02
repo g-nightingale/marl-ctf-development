@@ -71,6 +71,8 @@ class LeagueTrainer:
 
         # Check if teams are symmetrical
         self.symmetric_teams = sorted([v for k, v in self.env.AGENT_TYPES.items() if self.env.AGENT_TEAMS[k] == 0]) == sorted([v for k, v in self.env.AGENT_TYPES.items() if self.env.AGENT_TEAMS[k] == 1])
+        if self.args.force_two_teams:
+            self.symmetric_teams = False
 
         if self.args.n_coaching_agents == 0 and self.args.n_league_agents == 0:
             self.opponent_selection_weights['main'] = (1.0, 0.0, 0.0, 0.0)
@@ -755,10 +757,13 @@ class LeagueTrainer:
                 print(f'Meta run: {meta_run} Iteration: {iteration} updating agent pools...')
                 start_time = time.perf_counter()
 
-                if iteration > self.args.min_learning_rounds and len(self.all_agents_t1) > 1:
+                if iteration > self.args.min_learning_rounds \
+                  and len(self.all_agents_t1) >= 1 and len(self.all_agents_t2) >= 1:
                     self.update_agent_pools(team_idx=0)
                     if not self.symmetric_teams:
                         self.update_agent_pools(team_idx=1)
+
+                    print(self.winrate_matrix)
                         
                 end_time = time.perf_counter()
                 elapsed_time = end_time - start_time
@@ -767,8 +772,8 @@ class LeagueTrainer:
                 #----------------------------------------------------------------------
                 # Checkpointing
                 #----------------------------------------------------------------------
-                print(f'Saving objects...\n')
                 if iteration == 0 or (iteration + 1) % self.args.checkpoint_frequency == 0:
+                    print(f'Saving objects...\n')
                     self.checkpoint(meta_run, iteration)
 
             # Close wandb session
