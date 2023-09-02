@@ -131,4 +131,5 @@ dmypy.json
 # Wandb logs
 */wandb/
 
+runs/
 */runs/
