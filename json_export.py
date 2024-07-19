@@ -1,4 +1,4 @@
-from utils import get_agents, duel_json
+from utils import get_agents, duel_json, TrainingConfig
 from gridworld_ctf import GridworldCtf
 
 def main():
@@ -6,16 +6,16 @@ def main():
     OUTFOLDER = 'json/'
     FNAMES =[
         '0_the_split',
-        '1_fence_ii',
-        '2_jailbreak_ii',
+        '1_fence',
+        '2_jailbreak',
         '3_one_way_out',
         '4_keyhole',
         '5_skittles',
-        '6_the_wall_ii',
+        '6_the_wall',
         '7_gridlocked',
-        '8_arena_ii'
+        '8_arena_iii'
     ]
-
+    MAX_STEPS = 150
     TIMESTEPS = ['1', '20', '50']
 
     for fname in FNAMES:
@@ -35,7 +35,7 @@ def main():
             _ = duel_json(env, 
                             agent1, 
                             agent2, 
-                            max_steps=500, 
+                            max_steps=MAX_STEPS, 
                             render=False,
                             sleep_time=0.05,
                             fname=OUTFOLDER + fname + f'_{t}' + '.json')

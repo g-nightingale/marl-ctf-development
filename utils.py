@@ -14,6 +14,7 @@ import pandas as pd
 from collections import defaultdict
 import ray
 import copy
+import json
 
 class TrainingConfig():
     def __init__(self):
@@ -712,3 +713,103 @@ def create_results_table(run_dir, file_names, idx=-1, equal_var=False):
     agent_results_t2_df = pd.DataFrame(agent_results_t2)
 
     return team_results_df, agent_results_t1_df, agent_results_t2_df
+
+def myconverter(obj):
+    """
+    Converter function for JSON export.
+    """
+    if isinstance(obj, np.integer):
+        return int(obj)
+    elif isinstance(obj, np.floating):
+        return float(obj)
+    elif isinstance(obj, np.ndarray):
+        return obj.tolist()
+
+def duel_json(env, 
+         agent, 
+         opponent, 
+         max_steps=256, 
+         render=False,
+         sleep_time=0.01,
+         fname='output.json'):
+    """
+    Duelling algorithm - Exports JSON for rendering in three js.
+    """
+    device='cpu'
+    step_count = 0
+    done = False
+    env.reset()
+
+    json_mapping = {}
+    agent_config = []
+    for agent_idx in range(env.N_AGENTS):
+        agent_config.append({'team':env.AGENT_TEAMS[agent_idx], 'type':env.AGENT_TYPES[agent_idx],'start_x':env.AGENT_STARTING_POSITIONS[agent_idx][1], 'start_z':env.AGENT_STARTING_POSITIONS[agent_idx][0]})
+    
+    json_mapping['grid_size'] = env.GRID_SIZE
+    json_mapping['flag_pos'] = {f"{k}": {"x":v[1], "z":v[0]} for k, v in env.FLAG_POSITIONS.items()}
+    json_mapping['spawn_pos'] = {f"{k}": {"x":v[1], "z":v[0]} for k, v in env.SPAWN_POSITIONS.items()}
+    json_mapping['agent_config'] = agent_config
+    json_mapping['block_tiles'] = [{"x": x, "z":z} for z, x in zip(*np.where(env.grid == 1))]
+    json_mapping['destructible_tiles'] = [{"x": x, "z":z, "type":0} for z, x in zip(*np.where(env.grid == 2))] + [{"x": x, "z":z, "type":1} for z, x in zip(*np.where(env.grid == 3))]
+
+    # Pre-allocate memory for grid_state and metadata_state tensors
+    use_action_mask = torch.empty((env.N_AGENTS, 1), dtype=torch.float32, device=device)
+    grid_state = torch.empty((env.N_AGENTS, *env.standardise_state(0).shape), dtype=torch.float32, device=device)
+    metadata_state = torch.empty((env.N_AGENTS, *env.get_env_metadata(0).shape), dtype=torch.float32, device=device)
+
+    pos_deltas = []
+    tiles = []
+    scores = []
+    with torch.no_grad():
+        while not done:
+            step_count += 1
+
+            actions = []
+            agent_pos = env.agent_positions.copy()
+
+            for agent_idx in np.arange(env.N_AGENTS):
+                # Get global and local states
+                use_action_mask[agent_idx] = torch.tensor(
+                    env.AGENT_TYPE_ACTION_MASK[env.AGENT_TYPES[agent_idx]], 
+                    dtype=torch.float32,
+                    device=device)
+                grid_state[agent_idx] = torch.tensor(
+                    env.standardise_state(agent_idx, reverse_grid=(env.AGENT_TEAMS[agent_idx] != 0)),
+                    dtype=torch.float32,
+                    device=device,
+                )
+                metadata_state[agent_idx] = torch.tensor(
+                    env.get_env_metadata(agent_idx),
+                    dtype=torch.float32,
+                    device=device,
+                )
+
+                if env.AGENT_TEAMS[agent_idx] == 0:
+                    action = agent.get_action(grid_state[agent_idx], metadata_state[agent_idx], use_action_mask[agent_idx])
+                else:
+                    action = opponent.get_action(grid_state[agent_idx], metadata_state[agent_idx], use_action_mask[agent_idx])
+                    action = env.get_reversed_action(action)
+
+                actions.append(action)               
+
+            _, _, done = env.step(actions)
+
+            new_agent_pos = env.agent_positions 
+
+            pos_deltas.append([{"x":new_agent_pos[agent_idx][1] - agent_pos[agent_idx][1], "z":new_agent_pos[agent_idx][0] - agent_pos[agent_idx][0], "has_flag":env.has_flag[agent_idx]} for agent_idx in range(env.N_AGENTS)])
+            tiles.append([{"x": x, "z":z, "type":0} for z, x in zip(*np.where(env.grid == 2))] + [{"x": x, "z":z, "type":1} for z, x in zip(*np.where(env.grid == 3))])
+            scores.append([{f"t{k}":v for k, v in env.metrics["team_flag_captures"].items()}])
+            if render:
+                env.render(sleep_time=sleep_time)
+                print(step_count, env.metrics['team_flag_captures'][0], env.metrics['team_flag_captures'][1])
+
+            if step_count > max_steps:
+                done = True
+
+    json_mapping['movement'] = pos_deltas
+    json_mapping['tiles'] = tiles
+    json_mapping['scores'] = scores
+    with open(fname, 'w') as json_file:
+        json.dump(json_mapping, json_file, indent=4, default=myconverter)
+    
+    return json_mapping
